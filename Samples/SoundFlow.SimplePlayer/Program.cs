@@ -215,8 +215,8 @@ internal static class Program
             {
                 Console.WriteLine("Surround sound requested but player is not a SurroundPlayer.");
             }
-        }, new List<SoundModifier>
-        {
+        },
+        [
             new AlgorithmicReverbModifier
             {
                 RoomSize = 0.9f,
@@ -224,9 +224,9 @@ internal static class Program
                 Width = 0.75f,
                 Wet = 0.65f,
                 PreDelay = 35f,
-                Mix = 0.6f
+                Mix = 0.6f,
             }
-        });
+        ]);
     }
 
     private static void PlayAudioFromWeb()
@@ -394,7 +394,7 @@ internal static class Program
            // vad: vad
         );
 
-        PlayAudio(new StreamDataProvider(new FileStream(noisyFilePath, FileMode.Open, FileAccess.Read)), modifiers: new List<SoundModifier> { noiseReductionModifier });
+        PlayAudio(new StreamDataProvider(new FileStream(noisyFilePath, FileMode.Open, FileAccess.Read)), modifiers: [noiseReductionModifier]);
     }
 
     private static void PlayAudioWithEqualizer()
@@ -431,7 +431,7 @@ internal static class Program
         }
         Console.WriteLine();
 
-        PlayAudio(new StreamDataProvider(new FileStream(filePath, FileMode.Open, FileAccess.Read)), modifiers: new List<SoundModifier> { parametricEqualizer });
+        PlayAudio(new StreamDataProvider(new FileStream(filePath, FileMode.Open, FileAccess.Read)), modifiers: [parametricEqualizer]);
     }
 
     private static void SaveWaveformAsText(string filePath, int width, int height, List<float> waveform)

@@ -177,7 +177,7 @@ public class SurroundPlayer : SoundComponent, ISoundPlayer
     }
 
     // Surround sound parameters (predefined configurations)
-    private readonly Dictionary<SpeakerConfiguration, SurroundConfiguration> _predefinedConfigurations = new();
+    private readonly Dictionary<SpeakerConfiguration, SurroundConfiguration> _predefinedConfigurations = [];
 
     private float[] _delayLines = [];
     private int[] _delayIndices = [];

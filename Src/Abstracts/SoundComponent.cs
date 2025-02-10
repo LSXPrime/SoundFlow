@@ -15,13 +15,13 @@ public abstract class SoundComponent
     private static readonly ArrayPool<float> BufferPool = ArrayPool<float>.Shared;
 
     // Connection state
-    private readonly List<SoundComponent> _inputs = new();
-    private readonly List<SoundComponent> _outputs = new();
+    private readonly List<SoundComponent> _inputs = [];
+    private readonly List<SoundComponent> _outputs = [];
     private readonly object _connectionsLock = new();
 
     // Processing state
-    private readonly List<SoundModifier> _modifiers = new();
-    private readonly List<AudioAnalyzer> _analyzers = new();
+    private readonly List<SoundModifier> _modifiers = [];
+    private readonly List<AudioAnalyzer> _analyzers = [];
     private float _pan;
     private bool _solo;
     private float _volume = 1f;

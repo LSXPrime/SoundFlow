@@ -15,7 +15,7 @@ public class ParametricEqualizer : SoundModifier
     /// </summary>
     public List<EqualizerBand> Bands { get; private set; } = [];
 
-    private readonly Dictionary<int, List<BiquadFilter>> _filtersPerChannel = new();
+    private readonly Dictionary<int, List<BiquadFilter>> _filtersPerChannel = [];
 
     /// <summary>
     /// Initializes the filters for each channel based on the current EQ bands.

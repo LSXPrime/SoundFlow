@@ -321,11 +321,12 @@ internal static class ComponentTests
         var multiChorus = new MultiChannelChorusModifier(
             wetMix: 0.6f,
             maxDelay: 44100 / 20, // Example max delay
-            channelParameters: new[] // Example parameters for stereo (2-channel)
-            {
+            channelParameters:
+            // Example parameters for stereo (2-channel)
+            [
                 (depth: 2f, rate: 0.8f, feedback: 0.6f),
                 (depth: 2.5f, rate: 1.1f, feedback: 0.65f)
-            });
+            ]);
         oscillator.AddModifier(multiChorus);
         PlayComponentForDuration(oscillator, 5);
     }

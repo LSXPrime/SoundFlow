@@ -40,7 +40,7 @@ public class DelayModifier : SoundModifier
         WetMix = wetMix;
         Cutoff = cutoff;
 
-        _delayLines = new List<float[]>();
+        _delayLines = [];
         _delayIndices = new int[AudioEngine.Channels];
         _filterStates = new float[AudioEngine.Channels];
         

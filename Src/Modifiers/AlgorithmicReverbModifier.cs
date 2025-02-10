@@ -38,7 +38,7 @@ public class AlgorithmicReverbModifier : SoundModifier
 
     // Default values for filter parameters (per channel)
     private static readonly float[][] CombTunings =
-    {
+    [
         [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617], // Channel 0
         [1139, 1211, 1298, 1379, 1445, 1514, 1580, 1640], // Channel 1
         [1150, 1222, 1311, 1392, 1460, 1529, 1597, 1657], // Channel 2 
@@ -47,10 +47,10 @@ public class AlgorithmicReverbModifier : SoundModifier
         [1189, 1261, 1350, 1431, 1505, 1574, 1648, 1708], // Channel 5
         [1202, 1274, 1363, 1444, 1520, 1589, 1665, 1725], // Channel 6
         [1215, 1287, 1376, 1457, 1535, 1604, 1682, 1742] // Channel 7
-    };
+    ];
 
     private static readonly float[][] AllPassTunings =
-    {
+    [
         [556, 441, 341, 225], // Channel 0
         [569, 454, 354, 238], // Channel 1
         [582, 467, 367, 251], // Channel 2
@@ -59,7 +59,7 @@ public class AlgorithmicReverbModifier : SoundModifier
         [621, 506, 406, 290], // Channel 5
         [634, 519, 419, 303], // Channel 6
         [647, 532, 432, 316] // Channel 7
-    };
+    ];
 
     private const float FixedGain = 0.015f;
 
