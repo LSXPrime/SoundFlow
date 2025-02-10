@@ -5,7 +5,7 @@ namespace SoundFlow.Modifiers;
 /// <summary>
 /// A sound modifier that implements a delay effect.
 /// </summary>
-public class DelayModifier : SoundModifier
+public sealed class DelayModifier : SoundModifier
 {
     private readonly List<float[]> _delayLines;
     private readonly int[] _delayIndices;

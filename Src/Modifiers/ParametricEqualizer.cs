@@ -5,7 +5,7 @@ namespace SoundFlow.Modifiers;
 /// <summary>
 /// A Parametric Equalizer with support for multiple filter types.
 /// </summary>
-public class ParametricEqualizer : SoundModifier
+public sealed class ParametricEqualizer : SoundModifier
 {
     /// <inheritdoc />
     public override string Name { get; set; } = "Parametric Equalizer";

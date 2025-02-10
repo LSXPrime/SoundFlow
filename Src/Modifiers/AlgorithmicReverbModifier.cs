@@ -6,7 +6,7 @@ namespace SoundFlow.Modifiers;
 /// <summary>
 /// Free-verb algorithmic reverb modifier.
 /// </summary>
-public class AlgorithmicReverbModifier : SoundModifier
+public sealed class AlgorithmicReverbModifier : SoundModifier
 {
     private const int NumCombs = 8;
     private const int NumAllPasses = 4;

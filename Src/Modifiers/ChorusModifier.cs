@@ -5,7 +5,7 @@ namespace SoundFlow.Modifiers;
 /// <summary>
 /// A sound modifier that implements a chorus effect.
 /// </summary>
-public class ChorusModifier : SoundModifier
+public sealed class ChorusModifier : SoundModifier
 {
     /// <summary>
     /// The depth of the chorus effect in milliseconds.

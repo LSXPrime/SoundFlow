@@ -10,7 +10,7 @@ namespace SoundFlow.Components;
 /// <summary>
 /// A sound player that simulates surround sound with support for different speaker configurations and advanced panning methods.
 /// </summary>
-public class SurroundPlayer : SoundComponent, ISoundPlayer
+public sealed class SurroundPlayer : SoundComponent, ISoundPlayer
 {
     private readonly LowPassModifier _lowPassFilter = new(120f);
     private readonly ISoundDataProvider _dataProvider;
@@ -647,7 +647,7 @@ public class SurroundPlayer : SoundComponent, ISoundPlayer
 /// <param name="volumes">The volumes for each speaker.</param>
 /// <param name="delays">The delays for each speaker.</param>
 /// <param name="speakerPositions">The positions of each speaker.</param>
-public class SurroundConfiguration(string name, float[] volumes, float[] delays, Vector2[] speakerPositions)
+public sealed class SurroundConfiguration(string name, float[] volumes, float[] delays, Vector2[] speakerPositions)
 {
     /// <summary>
     ///     The name of the configuration.
