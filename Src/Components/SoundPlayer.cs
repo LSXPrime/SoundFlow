@@ -217,18 +217,7 @@ public sealed class SoundPlayer(ISoundDataProvider dataProvider) : SoundComponen
         Seek(0);
     }
     
-    /// <summary>
-    /// Seek via TimeSpan offset
-    /// </summary>
-    /// <param name="offset">Offset - amount of time to seek</param>
-    /// <param name="seekOrigin">
-    /// SeekOrigin - specifies how to calculate the offset
-    /// <ul>
-    /// <li><b>SeekOrigin.Begin</b>: Beginning of the audio stream</li>
-    /// <li><b>SeekOrigin.Current</b>: Current position of the audio stream</li>
-    /// <li><b>SeekOrigin.End:</b> Duration of the audio stream (offset has to be negative)</li>
-    /// </ul>
-    /// </param>
+    /// <inheritdoc cref="ISoundPlayer"/>
     public void Seek(TimeSpan offset, SeekOrigin seekOrigin = SeekOrigin.Begin)
     {
         var seekOffset = (float)offset.TotalMilliseconds / 1000;

@@ -89,6 +89,20 @@ public interface ISoundPlayer
     void Seek(int sampleOffset);
 
     /// <summary>
+    /// Seek via TimeSpan offset
+    /// </summary>
+    /// <param name="offset">Offset - amount of time to seek</param>
+    /// <param name="seekOrigin">
+    /// SeekOrigin - specifies how to calculate the offset
+    /// <ul>
+    /// <li><b>SeekOrigin.Begin</b>: Beginning of the audio stream</li>
+    /// <li><b>SeekOrigin.Current</b>: Current position of the audio stream</li>
+    /// <li><b>SeekOrigin.End:</b> Duration of the audio stream (offset has to be negative)</li>
+    /// </ul>
+    /// </param>
+    void Seek(TimeSpan offset, SeekOrigin seekOrigin = SeekOrigin.Begin);
+    
+    /// <summary>
     /// Sets the loop points for the sound player in seconds.
     /// </summary>
     /// <param name="startTime">The loop start time in seconds. Must be non-negative.</param>

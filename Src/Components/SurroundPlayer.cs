@@ -569,6 +569,25 @@ public sealed class SurroundPlayer : SoundComponent, ISoundPlayer
         Seek(0);
     }
 
+    /// <inheritdoc cref="ISoundPlayer"/>
+    public void Seek(TimeSpan offset, SeekOrigin seekOrigin = SeekOrigin.Begin)
+    {
+        var seekOffset = (float)offset.TotalMilliseconds / 1000;
+        switch (seekOrigin)
+        {
+            case SeekOrigin.Current:
+                Seek(Time + seekOffset);
+                break;
+            case SeekOrigin.End:
+                Seek(Duration + seekOffset);
+                break;
+            case SeekOrigin.Begin:
+            default:
+                Seek(seekOffset);
+                break;
+        }
+    }
+    
     /// <inheritdoc />
     public void Seek(float time)
     {
