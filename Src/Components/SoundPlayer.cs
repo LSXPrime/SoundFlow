@@ -213,8 +213,14 @@ public sealed class SoundPlayer(ISoundDataProvider dataProvider) : SoundComponen
     /// <inheritdoc />
     public void Stop()
     {
-        Pause();
-        Seek(0);
+        if (dataProvider.CanSeek)
+        {
+            Pause();
+            Seek(0);
+        }
+
+        Enabled = false;
+        State = PlaybackState.Stopped;
     }
     
     /// <inheritdoc cref="ISoundPlayer"/>
