@@ -38,6 +38,18 @@ public sealed class AssetDataProvider : ISoundDataProvider
     {
     }
 
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="AssetDataProvider" /> class.
+    /// </summary>
+    /// <param name="data">The raw audio data.</param>
+    /// <param name="sampleRate">The sample rate of the audio data.</param>
+    public AssetDataProvider(float[] data, int? sampleRate = null)
+    {
+        _data = data;
+        SampleRate = sampleRate;
+        Length = _data.Length;
+    }
+
     /// <inheritdoc />
     public int Position => _samplePosition;
 
@@ -130,5 +142,4 @@ public sealed class AssetDataProvider : ISoundDataProvider
         _data = null!;
         _isDisposed = true;
     }
-
 }
