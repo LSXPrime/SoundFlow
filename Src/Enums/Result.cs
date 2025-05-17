@@ -1,4 +1,6 @@
-﻿namespace SoundFlow.Enums;
+﻿#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
+
+namespace SoundFlow.Enums;
 
 /// <summary>
 /// Describes the result of an operation.
@@ -85,3 +87,5 @@ public enum Result
     FailedToStartBackendDevice = -402,
     FailedToStopBackendDevice = -403
 }
+
+#pragma warning restore CS1591
