@@ -3,6 +3,8 @@ using System.Runtime.InteropServices;
 
 namespace SoundFlow.Extensions.WebRtc.Apm;
 
+#pragma warning disable CS1591
+
 /// <summary>
 /// Error codes returned by the WebRTC Audio Processing Module
 /// </summary>
@@ -61,6 +63,7 @@ public enum RuntimeSettingType
     CapturePostGain,
     CaptureOutputUsed
 }
+#pragma warning restore CS1591
 
 /// <summary>
 /// Represents a stream configuration for audio processing
@@ -797,7 +800,7 @@ public class AudioProcessingModule : IDisposable
 public static class NativeMethods
 {
     private const string LibraryName = "webrtc-apm";
-    
+
     static NativeMethods()
     {
         NativeLibrary.SetDllImportResolver(typeof(NativeMethods).Assembly, NativeLibraryResolver.Resolve);
@@ -809,12 +812,12 @@ public static class NativeMethods
         {
             if (NativeLibrary.TryLoad(LibraryName, out var library))
                 return library;
-            
+
             var libraryPath = GetLibraryPath(LibraryName);
             // Safeguard against dotnet cli working directory inconsistency
             if (!File.Exists(libraryPath))
                 libraryPath = $"{Path.GetDirectoryName(assembly.Location)}/{libraryPath}";
-            
+
             return NativeLibrary.Load(libraryPath);
         }
 
@@ -881,6 +884,7 @@ public static class NativeMethods
         }
     }
 
+#pragma warning disable CS1591
     [DllImport(LibraryName, EntryPoint = "webrtc_apm_create", CallingConvention = CallingConvention.Cdecl)]
     public static extern IntPtr webrtc_apm_create();
 
@@ -1045,4 +1049,6 @@ public static class NativeMethods
 
     [DllImport(LibraryName, EntryPoint = "webrtc_apm_get_frame_size", CallingConvention = CallingConvention.Cdecl)]
     public static extern UIntPtr webrtc_apm_get_frame_size(int sample_rate_hz);
+    
+    #pragma warning restore CS1591
 }
