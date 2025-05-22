@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio.Enums;
 using SoundFlow.Enums;
@@ -20,9 +21,6 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
     private readonly Native.DecoderSeek _seekCallback;
     private bool _endOfStreamReached;
     private byte[] _readBuffer = [];
-    private short[]? _shortBuffer;
-    private int[]? _intBuffer;
-    private byte[]? _byteBuffer;
     private readonly object _syncLock = new();
 
     /// <summary>
@@ -71,91 +69,82 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
                 return 0;
 
             var framesToRead = (uint)(samples.Length / AudioEngine.Channels);
-            var nativeBuffer = GetNativeBufferPointer(samples);
+            var buffer = GetBufferIfNeeded(samples.Length);
 
-            if (_endOfStreamReached ||
-                framesToRead == 0 ||
-                Native.DecoderReadPcmFrames(_decoder, nativeBuffer, framesToRead, out var framesRead) != Result.Success ||
-                (uint)framesRead == 0)
+            var span = buffer ?? MemoryMarshal.AsBytes(samples);
+
+            ulong framesRead;
+            fixed (byte* nativeBuffer = span)
             {
-                _endOfStreamReached = true;
-                EndOfStreamReached?.Invoke(this, EventArgs.Empty);
-                return 0;
+                if (_endOfStreamReached ||
+                    framesToRead == 0 ||
+                    Native.DecoderReadPcmFrames(_decoder, (nint)nativeBuffer, framesToRead, out framesRead) != Result.Success ||
+                    framesRead == 0)
+                {
+                    _endOfStreamReached = true;
+                    EndOfStreamReached?.Invoke(this, EventArgs.Empty);
+                    return 0;
+                }
+            }
+            
+            if (SampleFormat is not SampleFormat.F32)
+            {
+                ConvertToFloat(samples, framesRead, span);
             }
 
-            if (SampleFormat != SampleFormat.F32)
-                ConvertToFloatIfNecessary(samples, (uint)framesRead, nativeBuffer);
+            if (buffer is not null)
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
 
             return (int)framesRead * AudioEngine.Channels;
         }
     }
 
-    private nint GetNativeBufferPointer(Span<float> samples)
+    private byte[]? GetBufferIfNeeded(int sampleLength)
     {
-        switch (SampleFormat)
+        // U32 can be done in-place with the passed in float span
+        if (SampleFormat is SampleFormat.F32 or SampleFormat.S32)
         {
-            case SampleFormat.S16:
-                _shortBuffer = ArrayPool<short>.Shared.Rent(samples.Length);
-                fixed (short* pSamples = _shortBuffer)
-                    return (nint)pSamples;
-            case SampleFormat.S24:
-                _byteBuffer = ArrayPool<byte>.Shared.Rent(samples.Length * 3);
-                fixed (byte* pSamples = _byteBuffer)
-                    return (nint)pSamples;
-            case SampleFormat.S32:
-                _intBuffer = ArrayPool<int>.Shared.Rent(samples.Length);
-                fixed (int* pSamples = _intBuffer)
-                    return (nint)pSamples;
-            case SampleFormat.U8:
-                _byteBuffer = ArrayPool<byte>.Shared.Rent(samples.Length);
-                fixed (byte* pSamples = _byteBuffer)
-                    return (nint)pSamples;
-            case SampleFormat.F32:
-                fixed (float* pSamples = samples)
-                    return (nint)pSamples;
-            default:
-                throw new NotSupportedException($"Sample format {SampleFormat} is not supported.");
+            return null;
         }
+        var byteSize = SampleFormat switch
+        {
+            SampleFormat.S16 => sampleLength * 2,
+            SampleFormat.S24 => sampleLength * 3,
+            SampleFormat.U8 => sampleLength,
+            _ => throw new NotSupportedException($"Sample format {SampleFormat} is not supported.")
+        };
+        return ArrayPool<byte>.Shared.Rent(byteSize);
     }
 
-    private void ConvertToFloatIfNecessary(Span<float> samples, uint framesRead, nint nativeBuffer)
+    private void ConvertToFloat(Span<float> samples, ulong framesRead, Span<byte> nativeBuffer)
     {
-        var sampleCount = (int)framesRead * AudioEngine.Channels;
+        var sampleCount = checked((int)framesRead * AudioEngine.Channels);
         switch (SampleFormat)
         {
             case SampleFormat.S16:
-                var shortSpan = new Span<short>(nativeBuffer.ToPointer(), sampleCount);
+                var shortSpan = MemoryMarshal.Cast<byte, short>(nativeBuffer);
                 for (var i = 0; i < sampleCount; i++)
                     samples[i] = shortSpan[i] / (float)short.MaxValue;
-                if (_shortBuffer != null) ArrayPool<short>.Shared.Return(_shortBuffer);
-                _shortBuffer = null!;
                 break;
             case SampleFormat.S24:
-                var s24Bytes = new Span<byte>(nativeBuffer.ToPointer(), sampleCount * 3); // 3 bytes per sample
                 for (var i = 0; i < sampleCount; i++)
                 {
-                    var sample24 = (s24Bytes[i * 3] << 0) | (s24Bytes[i * 3 + 1] << 8) | (s24Bytes[i * 3 + 2] << 16);
+                    var sample24 = (nativeBuffer[i * 3] << 0) | (nativeBuffer[i * 3 + 1] << 8) | (nativeBuffer[i * 3 + 2] << 16);
                     if ((sample24 & 0x800000) != 0) // Sign extension for negative values
                         sample24 |= unchecked((int)0xFF000000);
                     samples[i] = sample24 / 8388608f;
                 }
-
-                if (_byteBuffer != null) ArrayPool<byte>.Shared.Return(_byteBuffer);
-                _byteBuffer = null;
                 break;
             case SampleFormat.S32:
-                var int32Span = new Span<int>(nativeBuffer.ToPointer(), sampleCount);
+                var int32Span = MemoryMarshal.Cast<byte, int>(nativeBuffer);
                 for (var i = 0; i < sampleCount; i++)
                     samples[i] = int32Span[i] / (float)int.MaxValue;
-                if (_intBuffer != null) ArrayPool<int>.Shared.Return(_intBuffer);
-                _intBuffer = null!;
                 break;
             case SampleFormat.U8:
-                var byteSpan = new Span<byte>(nativeBuffer.ToPointer(), sampleCount);
                 for (var i = 0; i < sampleCount; i++)
-                    samples[i] = (byteSpan[i] - 128) / 128f; // Scale U8 to -1.0 to 1.0
-                if (_byteBuffer != null) ArrayPool<byte>.Shared.Return(_byteBuffer);
-                _byteBuffer = null!;
+                    samples[i] = (nativeBuffer[i] - 128) / 128f; // Scale U8 to -1.0 to 1.0
                 break;
         }
     }
@@ -248,26 +237,6 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
         lock (_syncLock)
         {
             if (IsDisposed) return;
-            if (disposeManaged)
-            {
-                if (_shortBuffer != null)
-                {
-                    ArrayPool<short>.Shared.Return(_shortBuffer);
-                    _shortBuffer = null;
-                }
-
-                if (_intBuffer != null)
-                {
-                    ArrayPool<int>.Shared.Return(_intBuffer);
-                    _intBuffer = null;
-                }
-
-                if (_byteBuffer != null)
-                {
-                    ArrayPool<byte>.Shared.Return(_byteBuffer);
-                    _byteBuffer = null;
-                }
-            }
 
             // keep delegates alive
             GC.KeepAlive(_readCallback);
