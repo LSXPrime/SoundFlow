@@ -69,6 +69,13 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
                 return 0;
 
             var framesToRead = (uint)(samples.Length / AudioEngine.Channels);
+            if (framesToRead == 0)
+            {
+                _endOfStreamReached = true;
+                EndOfStreamReached?.Invoke(this, EventArgs.Empty);
+                return 0;
+            }
+            
             var buffer = GetBufferIfNeeded(samples.Length);
 
             var span = buffer ?? MemoryMarshal.AsBytes(samples);
@@ -76,9 +83,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
             ulong framesRead;
             fixed (byte* nativeBuffer = span)
             {
-                if (_endOfStreamReached ||
-                    framesToRead == 0 ||
-                    Native.DecoderReadPcmFrames(_decoder, (nint)nativeBuffer, framesToRead, out framesRead) != Result.Success ||
+                if (Native.DecoderReadPcmFrames(_decoder, (nint)nativeBuffer, framesToRead, out framesRead) != Result.Success ||
                     framesRead == 0)
                 {
                     _endOfStreamReached = true;
