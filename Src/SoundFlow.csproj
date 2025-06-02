@@ -18,6 +18,7 @@
         <Version>1.0.4</Version>
         <PackageReleaseNotes>https://github.com/LSXPrime/SoundFlow/releases</PackageReleaseNotes>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <Company>LSXPrime</Company>
     </PropertyGroup>
 
     <ItemGroup>

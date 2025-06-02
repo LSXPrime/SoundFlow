@@ -12,19 +12,17 @@ public sealed class AssetDataProvider : ISoundDataProvider
 {
     private float[] _data;
     private int _samplePosition;
-    private bool _isDisposed;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="AssetDataProvider" /> class.
     /// </summary>
     /// <param name="stream">The stream to read audio data from.</param>
-    /// <param name="sampleRate">The sample rate of the audio data.</param>
-    public AssetDataProvider(Stream stream, int? sampleRate = null)
+    public AssetDataProvider(Stream stream)
     {
         var decoder = AudioEngine.Instance.CreateDecoder(stream);
         _data = Decode(decoder);
         decoder.Dispose();
-        SampleRate = sampleRate;
+        SampleRate = AudioEngine.Instance.SampleRate;
         Length = _data.Length;
     }
 
@@ -32,26 +30,15 @@ public sealed class AssetDataProvider : ISoundDataProvider
     ///     Initializes a new instance of the <see cref="AssetDataProvider" /> class.
     /// </summary>
     /// <param name="data">The audio data to read.</param>
-    /// <param name="sampleRate">The sample rate of the audio data.</param>
-    public AssetDataProvider(byte[] data, int? sampleRate = null)
-        : this(new MemoryStream(data), sampleRate)
+    public AssetDataProvider(byte[] data)
+        : this(new MemoryStream(data))
     {
-    }
-
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="AssetDataProvider" /> class.
-    /// </summary>
-    /// <param name="data">The raw audio data.</param>
-    /// <param name="sampleRate">The sample rate of the audio data.</param>
-    public AssetDataProvider(float[] data, int? sampleRate = null)
-    {
-        _data = data;
-        SampleRate = sampleRate;
-        Length = _data.Length;
     }
 
     /// <inheritdoc />
     public int Position => _samplePosition;
+
+    public float[] Data => _data;
 
     /// <inheritdoc />
     public int Length { get; } // Length in samples
@@ -63,7 +50,10 @@ public sealed class AssetDataProvider : ISoundDataProvider
     public SampleFormat SampleFormat { get; private set; }
     
     /// <inheritdoc />
-    public int? SampleRate { get; set; }
+    public int SampleRate { get; }
+
+    /// <inheritdoc />
+    public bool IsDisposed { get; set; }
 
     /// <inheritdoc />
     public event EventHandler<EventArgs>? EndOfStreamReached;
@@ -136,10 +126,11 @@ public sealed class AssetDataProvider : ISoundDataProvider
     /// <inheritdoc />
     public void Dispose()
     {
-        if (_isDisposed) return;
+        if (IsDisposed) return;
 
         // Dispose of _data
         _data = null!;
-        _isDisposed = true;
+        IsDisposed = true;
     }
+
 }

@@ -22,7 +22,6 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
     private readonly Queue<float> _buffer = new();
     private bool _isEndOfStream;
     private int _samplePosition;
-    private bool _isDisposed;
 
     private readonly object _lock = new();
 
@@ -30,9 +29,8 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
     ///     Initializes a new instance of the <see cref="ChunkedDataProvider" /> class.
     /// </summary>
     /// <param name="stream">The stream to read audio data from.</param>
-    /// <param name="sampleRate">The sample rate of the audio data.</param>
     /// <param name="chunkSize">The number of samples to read in each chunk.</param>
-    public ChunkedDataProvider(Stream stream, int? sampleRate = null, int chunkSize = DefaultChunkSize)
+    public ChunkedDataProvider(Stream stream, int chunkSize = DefaultChunkSize)
     {
         if (chunkSize <= 0)
             throw new ArgumentOutOfRangeException(nameof(chunkSize), "Chunk size must be greater than zero.");
@@ -43,8 +41,7 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
         _decoder = AudioEngine.Instance.CreateDecoder(_stream);
 
         SampleFormat = _decoder.SampleFormat;
-        SampleRate = sampleRate ?? AudioEngine.Instance.SampleRate;
-
+        SampleRate = AudioEngine.Instance.SampleRate;
         CanSeek = _stream.CanSeek;
 
         // Begin prefetching data
@@ -55,10 +52,9 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
     ///     Initializes a new instance of the <see cref="ChunkedDataProvider" /> class.
     /// </summary>
     /// <param name="filePath">The path to the file to read audio data from.</param>
-    /// <param name="sampleRate">The sample rate of the audio data.</param>
     /// <param name="chunkSize">The number of samples to read in each chunk.</param>
-    public ChunkedDataProvider(string filePath, int? sampleRate = null, int chunkSize = DefaultChunkSize)
-        : this(new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read), sampleRate, chunkSize)
+    public ChunkedDataProvider(string filePath, int chunkSize = DefaultChunkSize)
+        : this(new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read), chunkSize)
     {
     }
 
@@ -84,7 +80,10 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
     public SampleFormat SampleFormat { get; }
 
     /// <inheritdoc />
-    public int? SampleRate { get; set; }
+    public int SampleRate { get; }
+
+    /// <inheritdoc />
+    public bool IsDisposed { get; private set; }
 
     /// <inheritdoc />
     public event EventHandler<EventArgs>? EndOfStreamReached;
@@ -95,7 +94,7 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
     /// <inheritdoc />
     public int ReadBytes(Span<float> buffer)
     {
-        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        if (IsDisposed) return 0;
         var samplesRead = 0;
 
         lock (_lock)
@@ -136,7 +135,7 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
     /// <inheritdoc />
     public void Seek(int sampleOffset)
     {
-        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         if (!CanSeek)
             throw new NotSupportedException("Seeking is not supported on the underlying stream or decoder.");
 
@@ -169,7 +168,7 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
 
     private void FillBuffer()
     {
-        if (_isDisposed)
+        if (IsDisposed)
             return;
 
         var samplesToRead = _chunkSize * AudioEngine.Channels;
@@ -200,7 +199,7 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
     /// <inheritdoc />
     public void Dispose()
     {
-        if (_isDisposed)
+        if (IsDisposed)
             return;
 
         lock (_lock)
@@ -209,7 +208,7 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
             _stream.Dispose();
             _buffer.Clear();
 
-            _isDisposed = true;
+            IsDisposed = true;
         }
     }
 }

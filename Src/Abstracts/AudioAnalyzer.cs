@@ -13,6 +13,11 @@ public abstract class AudioAnalyzer
     public virtual string Name { get; set; } = "Audio Analyzer";
 
     
+    /// <summary>
+    /// Whether the analyzer is enabled or not.
+    /// </summary>
+    public bool Enabled { get; set; } = true;
+    
     private readonly IVisualizer? _visualizer;
 
     /// <summary>
@@ -30,6 +35,8 @@ public abstract class AudioAnalyzer
     /// </summary>
     public void Process(Span<float> buffer)
     {
+        if (!Enabled) return;
+        
         // Perform analysis on the buffer.
         Analyze(buffer);
 

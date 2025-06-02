@@ -17,12 +17,11 @@ public sealed class StreamDataProvider : ISoundDataProvider
     ///     Initializes a new instance of the <see cref="StreamDataProvider" /> class.
     /// </summary>
     /// <param name="stream">The stream to read audio data from.</param>
-    /// <param name="sampleRate">The sample rate of the audio data.</param>
-    public StreamDataProvider(Stream stream, int? sampleRate = null)
+    public StreamDataProvider(Stream stream)
     {
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
         _decoder = AudioEngine.Instance.CreateDecoder(stream);
-        SampleRate = sampleRate;
+        SampleRate = AudioEngine.Instance.SampleRate;
 
         _decoder.EndOfStreamReached += (_, args) =>
             EndOfStreamReached?.Invoke(this, args);
@@ -41,7 +40,10 @@ public sealed class StreamDataProvider : ISoundDataProvider
     public SampleFormat SampleFormat => _decoder.SampleFormat;
 
     /// <inheritdoc />
-    public int? SampleRate { get; set; }
+    public int SampleRate { get; }
+
+    /// <inheritdoc />
+    public bool IsDisposed { get; private set; }
 
     /// <inheritdoc />
     public event EventHandler<EventArgs>? EndOfStreamReached;
@@ -52,6 +54,7 @@ public sealed class StreamDataProvider : ISoundDataProvider
     /// <inheritdoc />
     public int ReadBytes(Span<float> buffer)
     {
+        if (IsDisposed) return 0;
         var count = _decoder.Decode(buffer);
         Position += count;
         return count;
@@ -60,22 +63,26 @@ public sealed class StreamDataProvider : ISoundDataProvider
     /// <inheritdoc />
     public void Seek(int sampleOffset)
     {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        
         if (!CanSeek)
             throw new InvalidOperationException("Seeking is not supported for this stream.");
 
-        if (sampleOffset < 0 || sampleOffset >= Length)
+        if (sampleOffset < 0 || sampleOffset > Length)
             throw new ArgumentOutOfRangeException(nameof(sampleOffset), "Seek position is outside the valid range.");
 
         _decoder.Seek(sampleOffset);
-        Position = (int)_stream.Position * SampleFormat.GetBytesPerSample();
-
+        Position = sampleOffset;
+        
         PositionChanged?.Invoke(this, new PositionChangedEventArgs(Position));
     }
 
     /// <inheritdoc />
     public void Dispose()
     {
+        if (IsDisposed) return;
         _decoder.Dispose();
         _stream.Dispose();
+        IsDisposed = true;
     }
 }

@@ -24,6 +24,9 @@ internal sealed unsafe class MiniAudioEncoder : ISoundEncoder
     public MiniAudioEncoder(string filePath, EncodingFormat encodingFormat, SampleFormat sampleFormat, int channels,
         int sampleRate)
     {
+        if (encodingFormat != EncodingFormat.Wav)
+            throw new NotSupportedException("MiniAudio only supports WAV encoding.");
+        
         FilePath = filePath;
 
         // Construct encoder config

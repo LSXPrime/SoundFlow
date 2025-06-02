@@ -31,7 +31,12 @@ public interface ISoundDataProvider : IDisposable
     /// <summary>
     ///     Gets or sets the target sample rate of the audio data.
     /// </summary>
-    int? SampleRate { get; set; }
+    int SampleRate { get; }
+    
+    /// <summary>
+    ///     Gets a value indicating whether the data source has been disposed.
+    /// </summary>
+    bool IsDisposed { get; }
 
     /// <summary>
     ///     Reads the specified number of audio bytes into the given buffer asynchronously.

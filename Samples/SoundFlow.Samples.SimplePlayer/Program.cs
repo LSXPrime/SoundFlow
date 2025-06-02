@@ -165,7 +165,6 @@ internal static class Program
                     break;
                 case ConsoleKey.OemPlus:
                 case ConsoleKey.Add:
-                    if (player.PlaybackSpeed < 2.0f)
                     {
                         player.PlaybackSpeed += 0.1f;
                         Console.WriteLine($"Speed increased to: {player.PlaybackSpeed:F2}");
@@ -174,7 +173,7 @@ internal static class Program
                     break;
                 case ConsoleKey.OemMinus:
                 case ConsoleKey.Subtract:
-                    if (player.PlaybackSpeed > 0.2f)
+                    if (player.PlaybackSpeed > 0.1f)
                     {
                         player.PlaybackSpeed -= 0.1f;
                         Console.WriteLine($"Speed decreased to: {player.PlaybackSpeed:F2}");
@@ -270,14 +269,9 @@ internal static class Program
 
     private static void RecordAndPlaybackAudio()
     {
-        SetOrCreateEngine(Capability.Record, 48000);
-
-        var vad = new VoiceActivityDetector(1024, 3f);
-
-        vad.SpeechDetected += isDetected => Console.WriteLine("Speech detected: " + isDetected);
-
+        SetOrCreateEngine(Capability.Record);
+        
         using var recorder = new Recorder(RecordedFilePath, SampleFormat.F32, EncodingFormat.Wav, 48000);
-        recorder.AddAnalyzer(vad);
 
         Console.WriteLine("Recording started. Press 's' to stop, 'p' to pause/resume.");
         recorder.StartRecording();
@@ -376,7 +370,7 @@ internal static class Program
         );
 
         PlayAudio(new StreamDataProvider(new FileStream(noisyFilePath, FileMode.Open, FileAccess.Read)),
-            modifiers: new List<SoundModifier> { noiseReductionModifier });
+            modifiers: [noiseReductionModifier]);
     }
 
     private static void PlayAudioWithEqualizer()
@@ -416,7 +410,7 @@ internal static class Program
         Console.WriteLine();
 
         PlayAudio(new StreamDataProvider(new FileStream(filePath, FileMode.Open, FileAccess.Read)),
-            modifiers: new List<SoundModifier> { parametricEqualizer });
+            modifiers: [parametricEqualizer]);
     }
 
     private static void SaveWaveformAsText(string filePath, int width, int height, List<float> waveform)

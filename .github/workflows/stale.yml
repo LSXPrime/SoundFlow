@@ -37,3 +37,4 @@ jobs:
           Thank you for your contributions. 
         stale-issue-label: 'no-issue-activity'
         stale-pr-label: 'no-pr-activity'
+        exempt-issue-labels: 'in-progress', 'backlog-feature'

@@ -22,6 +22,8 @@ public abstract class SoundModifier
     /// <param name="buffer">The buffer containing the audio samples to modify.</param>
     public virtual void Process(Span<float> buffer)
     {
+        if (!Enabled) return;
+        
         for (var i = 0; i < buffer.Length; i++)
         {
             buffer[i] = ProcessSample(buffer[i], i % AudioEngine.Channels);

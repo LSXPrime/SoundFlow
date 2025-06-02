@@ -31,10 +31,12 @@ internal static unsafe partial class Native
                 return library;
             
             var libraryPath = GetLibraryPath(libraryName);
-            // Safeguard against dotnet cli working directory inconsistency
-            if (!File.Exists(libraryPath))
-                libraryPath = $"{Path.GetDirectoryName(assembly.Location)}/{libraryPath}";
             
+            // Safeguard against dotnet cli working directory inconsistency
+            if (NativeLibrary.TryLoad(libraryName, out library))
+                return library;
+            
+            libraryPath = $"{AppDomain.CurrentDomain.BaseDirectory}/{libraryPath}";
             return NativeLibrary.Load(libraryPath);
         }
 
