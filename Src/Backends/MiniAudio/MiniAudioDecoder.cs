@@ -1,12 +1,10 @@
 using System.Buffers;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio.Enums;
 using SoundFlow.Enums;
 using SoundFlow.Exceptions;
 using SoundFlow.Interfaces;
-using SoundFlow.Utils;
 
 namespace SoundFlow.Backends.MiniAudio;
 
@@ -17,8 +15,8 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
 {
     private readonly nint _decoder;
     private readonly Stream _stream;
-    private readonly Native.DecoderRead _readCallback;
-    private readonly Native.DecoderSeek _seekCallback;
+    private readonly Native.BufferProcessingCallback _readCallback;
+    private readonly Native.SeekCallback _seekCallbackCallback;
     private bool _endOfStreamReached;
     private byte[] _readBuffer = [];
     private readonly object _syncLock = new();
@@ -36,7 +34,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
             (uint)AudioEngine.Instance.SampleRate);
 
         _decoder = Native.AllocateDecoder();
-        var result = Native.DecoderInit(_readCallback = ReadCallback, _seekCallback = SeekCallback, nint.Zero,
+        var result = Native.DecoderInit(_readCallback = ReadCallback, _seekCallbackCallback = SeekCallback, nint.Zero,
             configPtr, _decoder);
 
         if (result != Result.Success) throw new BackendException("MiniAudio", result, "Unable to initialize decoder.");
@@ -175,6 +173,9 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
         }
     }
 
+    /// <summary>
+    /// Disposes of the decoder resources.
+    /// </summary>
     public void Dispose()
     {
         Dispose(true);
@@ -186,13 +187,13 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
         Dispose(false);
     }
 
-    private Result ReadCallback(nint pDecoder, nint pBufferOut, ulong bytesToRead, out uint* pBytesRead)
+    private Result ReadCallback(nint pDecoder, nint pBufferOut, ulong bytesToRead, out ulong* pBytesRead)
     {
         lock (_syncLock)
         {
             if (!_stream.CanRead || _endOfStreamReached)
             {
-                pBytesRead = (uint*)0;
+                pBytesRead = (ulong*)0;
                 return Result.NoDataAvailable;
             }
 
@@ -218,7 +219,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
             // Clear read buffer
             Array.Clear(_readBuffer, 0, _readBuffer.Length);
 
-            pBytesRead = (uint*)read;
+            pBytesRead = (ulong*)read;
             return Result.Success;
         }
     }
@@ -237,7 +238,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
         }
     }
 
-    private void Dispose(bool disposeManaged)
+    private void Dispose(bool _)
     {
         lock (_syncLock)
         {
@@ -245,7 +246,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
 
             // keep delegates alive
             GC.KeepAlive(_readCallback);
-            GC.KeepAlive(_seekCallback);
+            GC.KeepAlive(_seekCallbackCallback);
 
             Native.DecoderUninit(_decoder);
             Native.Free(_decoder);

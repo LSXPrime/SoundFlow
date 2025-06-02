@@ -144,11 +144,6 @@ public static class SpeechBasedExamples
 
     private static void PlayComposition(Composition composition, string message = "Playing composition...")
     {
-        var encoder = AudioEngine.Instance.CreateEncoder($"{composition.Name}.wav", EncodingFormat.Wav, SampleFormat.F32, 1, 24000);
-        var render = composition.Render(TimeSpan.Zero, composition.CalculateTotalDuration());
-        encoder.Encode(render);
-        encoder.Dispose();
-        
         Console.WriteLine(message);
         var player = new SoundPlayer(composition);
         Mixer.Master.AddComponent(player);

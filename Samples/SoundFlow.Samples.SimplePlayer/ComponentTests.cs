@@ -154,11 +154,12 @@ internal static class ComponentTests
         _audioEngine.Dispose();
         _audioEngine = new MiniAudioEngine(48000, Capability.Record);
 
-        var recorder =
-            new Recorder("output_recording.wav");
+        var stream = new FileStream("output_recording.wav", FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096);
+        var recorder = new Recorder(stream);
         recorder.StartRecording();
         Thread.Sleep(5000); // Record for 5 seconds
         recorder.StopRecording();
+        stream.Dispose();
         Console.WriteLine("Recording stopped and saved to 'output_recording.wav'.");
     }
 

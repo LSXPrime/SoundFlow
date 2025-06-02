@@ -13,10 +13,15 @@ internal static unsafe partial class Native
     public delegate void AudioCallback(nint device, nint output, nint input, uint length);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate Result DecoderRead(nint pDecoder, nint pBufferOut, ulong bytesToRead, out uint* pBytesRead);
+    public delegate Result BufferProcessingCallback(
+        nint pCodecContext,          // The native decoder/encoder instance pointer (ma_decoder*, ma_encoder*)
+        nint pBuffer,                // The buffer pointer (void* pBufferOut or const void* pBufferIn)
+        ulong bytesRequested,        // The number of bytes requested (bytesToRead or bytesToWrite)
+        out ulong* bytesTransferred   // The actual number of bytes processed/transferred (size_t*)
+    );
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate Result DecoderSeek(nint pDecoder, long byteOffset, SeekPoint origin);
+    public delegate Result SeekCallback(nint pDecoder, long byteOffset, SeekPoint origin);
     
     static Native()
     {
@@ -107,8 +112,8 @@ internal static unsafe partial class Native
     
     #region Encoder
 
-    [LibraryImport(LibraryName, EntryPoint = "ma_encoder_init_file", StringMarshalling = StringMarshalling.Utf8)]
-    public static partial Result EncoderInitFile(string filePath, nint pConfig, nint pEncoder);
+    [LibraryImport(LibraryName, EntryPoint = "ma_encoder_init", StringMarshalling = StringMarshalling.Utf8)]
+    public static partial Result EncoderInit(BufferProcessingCallback onRead, SeekCallback onSeekCallback, nint pUserData, nint pConfig, nint pEncoder);
 
     [LibraryImport(LibraryName, EntryPoint = "ma_encoder_uninit")]
     public static partial void EncoderUninit(nint pEncoder);
@@ -122,7 +127,7 @@ internal static unsafe partial class Native
     #region Decoder
 
     [LibraryImport(LibraryName, EntryPoint = "ma_decoder_init")]
-    public static partial Result DecoderInit(DecoderRead onRead, DecoderSeek onSeek, nint pUserData,
+    public static partial Result DecoderInit(BufferProcessingCallback onRead, SeekCallback onSeekCallback, nint pUserData,
         nint pConfig, nint pDecoder);
 
     [LibraryImport(LibraryName, EntryPoint = "ma_decoder_uninit")]

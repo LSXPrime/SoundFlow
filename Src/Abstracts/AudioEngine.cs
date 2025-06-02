@@ -336,13 +336,13 @@ public abstract class AudioEngine : IDisposable
     /// <summary>
     ///     Constructs a sound encoder specific to the implementation.
     /// </summary>
-    /// <param name="filePath">The path to the file to write encoded audio to.</param>
+    /// <param name="stream">The stream to write encoded audio to.</param>
     /// <param name="encodingFormat">The desired audio encoding format.</param>
     /// <param name="sampleFormat">The format of the input audio samples.</param>
     /// <param name="channels">The number of audio channels.</param>
     /// <param name="sampleRate">The sample rate of the input audio.</param>
     /// <returns>An instance of a sound encoder.</returns>
-    public abstract ISoundEncoder CreateEncoder(string filePath, EncodingFormat encodingFormat,
+    public abstract ISoundEncoder CreateEncoder(Stream stream, EncodingFormat encodingFormat,
         SampleFormat sampleFormat, int channels, int sampleRate);
 
     /// <summary>

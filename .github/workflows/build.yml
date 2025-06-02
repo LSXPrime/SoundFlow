@@ -38,21 +38,21 @@ jobs:
             toolchain: "Visual Studio 17 2022"
 
           # Linux builds
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             rid: linux-x64
             platform: Linux
             arch: x86_64
             cmake_target_arch: x64
             lib_extension: ".so"
 
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             rid: linux-arm
             platform: Linux
             arch: armv7l
             cmake_target_arch: arm
             lib_extension: ".so"
 
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             rid: linux-arm64
             platform: Linux
             arch: aarch64
@@ -83,21 +83,21 @@ jobs:
             lib_extension: ".framework"
 
           # Android builds
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             rid: android-arm
             platform: Android
             arch: armeabi-v7a
             cmake_target_arch: armeabi-v7a
             lib_extension: ".so"
 
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             rid: android-arm64
             platform: Android
             arch: arm64-v8a
             cmake_target_arch: arm64-v8a
             lib_extension: ".so"
 
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             rid: android-x64
             platform: Android
             arch: x86_64
@@ -149,7 +149,7 @@ jobs:
 
       # Linux/Android dependencies
       - name: Install Dependencies (Linux)
-        if: matrix.os == 'ubuntu-latest' && matrix.platform == 'Linux'
+        if: matrix.platform == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake gcc g++
@@ -262,7 +262,7 @@ jobs:
           readelf -d "$LIB_PATH"
 
       - name: Analyze Dependencies (Linux)
-        if: matrix.os == 'ubuntu-latest' && matrix.platform == 'Linux'
+        if: matrix.platform == 'Linux'
         shell: bash
         run: |
           LIB_PATH="runtimes/${{ matrix.rid }}/native/libminiaudio.so"
@@ -270,7 +270,7 @@ jobs:
           ldd "$LIB_PATH"
 
       - name: Analyze Dependencies (macOS)
-        if: matrix.os == 'macos-latest' && matrix.platform == 'macOS'
+        if: matrix.platform == 'macOS'
         shell: bash
         run: |
           LIB_PATH="runtimes/${{ matrix.rid }}/native/libminiaudio.dylib"
@@ -285,7 +285,7 @@ jobs:
 
   package:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4

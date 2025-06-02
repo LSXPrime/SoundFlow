@@ -181,7 +181,8 @@ class Program
             suppressionLevel: NoiseSuppressionLevel.VeryHigh,
             useMultichannelProcessing: false
         );
-        var encoder = AudioEngine.Instance.CreateEncoder(CleanedFilePath, EncodingFormat.Wav, SampleFormat.F32, 1, 48000);
+        var stream = new FileStream(CleanedFilePath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096);
+        var encoder = AudioEngine.Instance.CreateEncoder(stream, EncodingFormat.Wav, SampleFormat.F32, 1, 48000);
         
         // Process the noisy speech file and save the cleaned audio
         Console.WriteLine("Processing noisy speech file...");
@@ -189,6 +190,7 @@ class Program
         var cleanData = noiseSuppressor.ProcessAll();
         encoder.Encode(cleanData.AsSpan());
         encoder.Dispose();
+        stream.Dispose();
         
         Console.WriteLine($"Noise suppression applied. Cleaned audio file saved as 'cleaned-audio.wav' at {CleanedFilePath}, Press any key to exit.");
         Console.ReadLine();

@@ -204,16 +204,16 @@ public static class CompositionProjectManager
 
                     if (samplesRead == totalSamples && totalSamples > 0)
                     {
-                        
                         // ISoundDataProvider doesn't expose its native channel count. This is a limitation.
                         // For now, I will use the composition's target channels for the encoded WAV.
                         // This means mono sources might become stereo, or vice versa, if compositionTargetChannels differs.
                         // TODO: refactor when support for getting audio data is added (e.g., mono, stereo, 5.1 or 7.1, etc.)
                         var encSr = provider.SampleRate;
                         const SampleFormat encFormat = SampleFormat.F32;
-                        using var encoder = AudioEngine.Instance.CreateEncoder(
-                            consolidatedFilePath, EncodingFormat.Wav, encFormat, compositionTargetChannels, encSr);
+                        var stream = new FileStream(consolidatedFilePath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096);
+                        using var encoder = AudioEngine.Instance.CreateEncoder(stream, EncodingFormat.Wav, encFormat, compositionTargetChannels, encSr);
                         encoder.Encode(tempBuffer.AsSpan(0, samplesRead));
+                        await stream.DisposeAsync();
 
                         sourceRef.OriginalSampleFormat = encFormat;
                         sourceRef.OriginalSampleRate = encSr;

@@ -42,7 +42,7 @@ public class Recorder : IDisposable
     /// Gets the file path where audio will be recorded, if recording to a file.
     /// Will be an empty string if recording via a callback.
     /// </summary>
-    public readonly string FilePath = string.Empty;
+    public readonly Stream Stream = Stream.Null;
 
     /// <summary>
     /// Gets or sets the callback function to be invoked when audio data is processed.
@@ -57,12 +57,12 @@ public class Recorder : IDisposable
     /// <summary>
     /// Initializes a new instance of the <see cref="Recorder"/> class to record audio to a file.
     /// </summary>
-    /// <param name="filePath">The path to the file where audio should be recorded.</param>
+    /// <param name="stream">The stream to write encoded recorded audio to.</param>
     /// <param name="sampleFormat">The desired sample format for recording. Defaults to <see cref="SampleFormat.F32"/>.</param>
     /// <param name="encodingFormat">The desired encoding format for the recorded audio file. Defaults to <see cref="EncodingFormat.Wav"/>.</param>
     /// <param name="sampleRate">The desired sample rate for recording, in samples per second. Defaults to 44100 Hz.</param>
     /// <param name="channels">The number of channels to record. Defaults to 2 (stereo).</param>
-    public Recorder(string filePath,
+    public Recorder(Stream stream,
         SampleFormat sampleFormat = SampleFormat.F32,
         EncodingFormat encodingFormat = EncodingFormat.Wav,
         int sampleRate = 44100,
@@ -70,7 +70,7 @@ public class Recorder : IDisposable
     {
         SampleFormat = sampleFormat;
         EncodingFormat = encodingFormat;
-        FilePath = filePath;
+        Stream = stream;
         SampleRate = sampleRate;
         Channels = channels;
     }
@@ -110,23 +110,20 @@ public class Recorder : IDisposable
     /// Starts the audio recording process.
     /// If recording to a file, it initializes the audio encoder.
     /// </summary>
-    /// <exception cref="ArgumentException">Thrown if both <see cref="FilePath"/> and <see cref="ProcessCallback"/> are invalid (e.g., <see cref="FilePath"/> is null or empty and <see cref="ProcessCallback"/> is null).</exception>
+    /// <exception cref="ArgumentException">Thrown if both <see cref="Stream"/> and <see cref="ProcessCallback"/> are invalid (e.g., <see cref="Stream"/> is null or empty and <see cref="ProcessCallback"/> is null).</exception>
     /// <exception cref="BackendException">Thrown if creating the audio encoder fails when recording to a file.</exception>
     public void StartRecording()
     {
-        if (string.IsNullOrEmpty(FilePath) && ProcessCallback == null)
-            throw new ArgumentException("Invalid file path or callback", nameof(FilePath));
+        if (ProcessCallback == null && (Stream == Stream.Null || !Stream.CanWrite))
+            throw new ArgumentException("Invalid stream or callback", nameof(Stream));
 
         if (State == PlaybackState.Playing)
             return;
 
-        if (!string.IsNullOrEmpty(FilePath))
-        {
-            _encoder = AudioEngine.Instance.CreateEncoder(FilePath, EncodingFormat, SampleFormat, Channels, SampleRate);
-            if (_encoder == null)
-                throw new BackendException(AudioEngine.Instance.GetType().Name, Result.Error,
-                    "Failed to create encoder.");
-        }
+        _encoder = AudioEngine.Instance.CreateEncoder(Stream, EncodingFormat, SampleFormat, Channels, SampleRate);
+        if (_encoder == null)
+            throw new BackendException(AudioEngine.Instance.GetType().Name, Result.Error,
+                "Failed to create encoder.");
 
         AudioEngine.OnAudioProcessed += OnOnAudioProcessed;
         State = PlaybackState.Playing;
@@ -227,8 +224,7 @@ public class Recorder : IDisposable
         // Apply modifiers
         foreach (var modifier in _modifiers)
         {
-            if (modifier.Enabled)
-                modifier.Process(samples);
+            modifier.Process(samples);
         }
 
         // Process analyzers

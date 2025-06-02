@@ -8,7 +8,6 @@ using SoundFlow.Interfaces;
 using SoundFlow.Modifiers;
 using SoundFlow.Providers;
 using SoundFlow.Visualization;
-using VoiceActivityDetector = SoundFlow.Components.VoiceActivityDetector;
 
 namespace SoundFlow.Samples.SimplePlayer;
 
@@ -271,7 +270,8 @@ internal static class Program
     {
         SetOrCreateEngine(Capability.Record);
         
-        using var recorder = new Recorder(RecordedFilePath, SampleFormat.F32, EncodingFormat.Wav, 48000);
+        var stream = new FileStream(RecordedFilePath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096);
+        using var recorder = new Recorder(stream, SampleFormat.F32, EncodingFormat.Wav, 48000);
 
         Console.WriteLine("Recording started. Press 's' to stop, 'p' to pause/resume.");
         recorder.StartRecording();
@@ -301,6 +301,8 @@ internal static class Program
         }
 
         Console.WriteLine("Recording finished. Press 'p' to playback or any other key to exit.");
+        Console.WriteLine($"Recorded file: {RecordedFilePath}");
+        stream.Dispose();
         if (Console.ReadKey(true).Key != ConsoleKey.P)
             return;
 
