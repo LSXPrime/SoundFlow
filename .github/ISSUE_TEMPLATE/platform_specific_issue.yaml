@@ -1,0 +1,176 @@
+name: "💻 Platform Specific Issue"
+description: Report an issue that only occurs on specific platforms or environments
+title: "[PLAT] Brief description of the platform-specific issue"
+labels: ["bug"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Thank you for reporting a platform-specific issue! This helps us ensure SoundFlow works well everywhere.**
+
+  - type: markdown
+    attributes:
+      value: |
+        ### 1. Affected Platform(s)
+        Please specify the platform(s) where this issue occurs. Be as specific as possible.
+
+  - type: input
+    id: os-version
+    attributes:
+      label: Operating System & Version
+      description: e.g., Windows 10 Pro 22H2, macOS Monterey 12.5, Ubuntu 20.04 LTS
+    validations:
+      required: true
+
+  - type: input
+    id: architecture
+    attributes:
+      label: Architecture
+      description: e.g., x64, ARM64, x86
+    validations:
+      required: true
+
+  - type: input
+    id: net-runtime-version
+    attributes:
+      label: .NET Runtime & Version
+      description: e.g., .NET Core 3.1, .NET 7, Mono 6.12
+    validations:
+      required: true
+
+  - type: input
+    id: audio-backend
+    attributes:
+      label: Audio Backend Used (if known)
+      description: e.g., MiniAudioEngine with WASAPI, CoreAudio, ALSA
+    validations:
+      required: false
+
+  - type: input
+    id: specific-hardware
+    attributes:
+      label: Specific Hardware (if relevant)
+      description: e.g., M1 Mac, Raspberry Pi 4, specific sound card model
+    validations:
+      required: false
+
+  - type: textarea
+    id: description-of-issue
+    attributes:
+      label: 2. Description of the Issue
+      description: |
+        A clear and concise description of the problem as it manifests on the affected platform(s).
+        *   How does the behavior differ from other platforms (if you've tested)?
+      placeholder: Describe the issue unique to this platform.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: works-on-other-platforms
+    attributes:
+      label: 3. Does it work correctly on other platforms?
+      options:
+        - "Yes"
+        - "No (This might be a general bug, consider the Bug Report template)"
+        - "Not Tested / Don't Know"
+      default: 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: working-platforms
+    attributes:
+      label: Which platforms work correctly? (If "Yes" above)
+      description: Please specify which platforms work correctly if you selected "Yes" above.
+      placeholder: e.g., Windows 11, macOS Ventura
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: 4. Steps to Reproduce (on the affected platform)
+      description: Please provide detailed steps to reproduce the behavior *on the affected platform(s)*.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: 5. Expected Behavior (on the affected platform)
+      placeholder: What should happen on this platform?
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-behavior
+    attributes:
+      label: 6. Current Behavior (on the affected platform)
+      placeholder: What actually happens on this platform?
+    validations:
+      required: true
+
+  - type: textarea
+    id: mre
+    attributes:
+      label: 7. Minimal Reproducible Example (MRE)
+      description: If possible, provide a *minimal* code snippet that demonstrates the issue on the affected platform.
+      placeholder: |
+        ```csharp
+        // Your MRE code here
+        ```
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: error-messages
+    attributes:
+      label: 8. Error Messages and Stack Trace (if applicable, from the affected platform)
+      placeholder: |
+        ```
+        (Paste full error message and stack trace here)
+        ```
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: sf-version
+    attributes:
+      label: 9. SoundFlow Version
+      description: e.g., 1.0.0, or commit SHA
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 10. Additional Context
+      description: |
+        Any other details that might be relevant to this platform-specific issue.
+        *   Have you tried any platform-specific configurations or workarounds?
+        *   Are there any known quirks or limitations of the OS, runtime, or hardware involved?
+      placeholder: Any other relevant information.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: requirements-checklist
+    attributes:
+      label: Requirements Checklist
+      options:
+        - label: I have searched the existing issues to ensure this platform-specific issue has not already been reported.
+          required: true
+        - label: I have clearly specified the affected platform(s) and environment details.
+          required: true
+        - label: I have provided detailed steps to reproduce the issue on the affected platform.
+          required: true
+        - label: I have indicated if the issue is confirmed to work correctly on other platforms.
+          required: true

@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using SoundFlow.Components;
 using SoundFlow.Enums;
 using SoundFlow.Exceptions;
@@ -286,35 +287,81 @@ public abstract class AudioEngine : IDisposable
     }
 
 
-    private void ConvertAndCopyToOutput<T>(nint output, int length, Span<float> floatBuffer, float maxValue,
-        bool isUnsigned = false) where T : unmanaged
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ConvertAndCopyToOutput<T>(nint output, int length, Span<float> floatBuffer, float maxValue, bool isUnsigned = false) where T : unmanaged
     {
+        // Parameter validation
+        ArgumentOutOfRangeException.ThrowIfNegative(length);
+        if (length == 0) return;
+        if (float.IsNaN(maxValue) || float.IsInfinity(maxValue))
+            throw new ArgumentException("maxValue must be a finite number", nameof(maxValue));
+        if (output == nint.Zero) throw new ArgumentNullException(nameof(output));
+
         var outputSpan = Extensions.GetSpan<T>(output, length);
-        for (var i = 0; i < length; i++)
+
+        try
         {
-            var clipped = Math.Clamp(floatBuffer[i], -1f, 1f);
-            var scaledValue = clipped * maxValue;
-
-            if (isUnsigned)
-                scaledValue += maxValue;
-
-            if (typeof(T) == typeof(int) && SampleFormat == SampleFormat.S24) // Special S24 handling
+            if (typeof(T) == typeof(byte))
             {
-                var intValue = (int)scaledValue;
-                var intBytes = BitConverter.GetBytes(intValue); // Get the bytes of the integer
-                outputSpan[i] =
-                    (T)Convert.ChangeType(BitConverter.ToInt32(intBytes, 0),
-                        typeof(T)); // Convert back, effectively using 32 bits for alignment
+                var unsignedOffset = isUnsigned ? maxValue : 0f;
+                const float scale = byte.MaxValue;
+                for (var i = 0; i < length; i++)
+                {
+                    var sample = floatBuffer[i];
+                    if (!float.IsFinite(sample))
+                    {
+                        Unsafe.As<T, byte>(ref outputSpan[i]) = (byte)(scale * 0.5f);
+                        continue;
+                    }
+                    var clipped = Math.Clamp(sample, -1f, 1f);
+                    var scaled = clipped * maxValue + unsignedOffset;
+                    Unsafe.As<T, byte>(ref outputSpan[i]) = (byte)Math.Clamp(scaled, 0f, scale);
+                }
+            }
+            else if (typeof(T) == typeof(short))
+            {
+                var unsignedOffset = isUnsigned ? maxValue : 0f;
+                float min = isUnsigned ? 0 : short.MinValue;
+                const float max = short.MaxValue;
+                for (var i = 0; i < length; i++)
+                {
+                    var sample = floatBuffer[i];
+                    if (!float.IsFinite(sample))
+                    {
+                        Unsafe.As<T, short>(ref outputSpan[i]) = (short)(isUnsigned ? max * 0.5f : 0);
+                        continue;
+                    }
+                    var clipped = Math.Clamp(sample, -1f, 1f);
+                    var scaled = clipped * maxValue + unsignedOffset;
+                    Unsafe.As<T, short>(ref outputSpan[i]) = (short)Math.Clamp(scaled, min, max);
+                }
+            }
+            else if (typeof(T) == typeof(int))
+            {
+                var unsignedOffset = isUnsigned ? maxValue : 0f;
+                float min = isUnsigned ? 0 : int.MinValue;
+                const float max = int.MaxValue;
+                for (var i = 0; i < length; i++)
+                {
+                    var sample = floatBuffer[i];
+                    if (!float.IsFinite(sample))
+                    {
+                        Unsafe.As<T, int>(ref outputSpan[i]) = (int)(isUnsigned ? max * 0.5f : 0);
+                        continue;
+                    }
+                    var clipped = Math.Clamp(sample, -1f, 1f);
+                    var scaled = clipped * maxValue + unsignedOffset;
+                    Unsafe.As<T, int>(ref outputSpan[i]) = (int)Math.Clamp(scaled, min, max);
+                }
             }
             else
             {
-                if (typeof(T) == typeof(int))
-                    scaledValue = (int)Math.Max(int.MinValue, Math.Min(int.MaxValue, scaledValue));
-
-                outputSpan[i] = (T)Convert.ChangeType(scaledValue, typeof(T));
+                throw new NotSupportedException($"Unsupported output format: {typeof(T)}");
             }
-
-            floatBuffer[i] = 0;
+        }
+        finally
+        {
+            floatBuffer.Clear();
         }
     }
 

@@ -105,6 +105,17 @@ internal static unsafe partial class Native
                 };
             }
 
+            if (OperatingSystem.IsFreeBSD())
+            {
+                return RuntimeInformation.ProcessArchitecture switch
+                {
+                    Architecture.X64 => $"{relativeBase}/freebsd-x64/native/lib{libraryName}.so",
+                    Architecture.Arm64 => $"{relativeBase}/freebsd-arm64/native/lib{libraryName}.so",
+                    _ => throw new PlatformNotSupportedException(
+                        $"Unsupported FreeBSD architecture: {RuntimeInformation.ProcessArchitecture}")
+                };
+            }
+
             throw new PlatformNotSupportedException(
                 $"Unsupported operating system: {RuntimeInformation.OSDescription}");
         }

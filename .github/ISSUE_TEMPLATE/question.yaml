@@ -1,0 +1,108 @@
+name: "💡 Question"
+description: Ask a question about SoundFlow
+title: "[QSTN] Your question in a few words"
+labels: ["question"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before asking, please ensure your question isn't answered in the [documentation](https://lsxprime.github.io/soundflow-docs/) or existing issues.**
+
+  - type: checkboxes
+    id: requirements
+    attributes:
+      label: Requirements
+      options:
+        - label: I have searched the documentation and existing issues for an answer.
+          required: true
+        - label: My question is specific and clearly formulated.
+          required: true
+        - label: This is not a bug report or a feature request.
+          required: true
+
+  - type: textarea
+    id: what-trying-to-achieve
+    attributes:
+      label: 1. What are you trying to achieve?
+      description: A clear and concise description of your goal.
+      placeholder: Describe your objective or the problem you're trying to solve.
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-tried-so-far
+    attributes:
+      label: 2. What have you tried so far?
+      description: Please describe the steps you've taken, what you've looked at in the documentation, or any code you've experimented with.
+      placeholder: What have you done to try and find a solution?
+    validations:
+      required: true
+
+  - type: textarea
+    id: specific-question
+    attributes:
+      label: 3. What are you unsure about / What is your specific question?
+      description: Be precise.
+      placeholder: Formulate your exact question here.
+    validations:
+      required: true
+
+  - type: textarea
+    id: relevant-code
+    attributes:
+      label: 4. Relevant Code Snippet (if applicable)
+      description: If your question relates to a specific piece of code, please include a minimal, runnable snippet.
+      placeholder: |
+        ```csharp
+        // Your code here
+        ```
+      render: shell
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ### 5. Environment (if relevant to your question):
+
+  - type: input
+    id: sf-version
+    attributes:
+      label: SoundFlow Version
+      description: e.g., 1.0.0
+    validations:
+      required: false
+
+  - type: input
+    id: net-version
+    attributes:
+      label: .NET Version
+      description: e.g., .NET 8.0
+    validations:
+      required: false
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating System
+      description: e.g., Windows 11
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 6. Additional Context
+      description: Any other information that might help us understand and answer your question.
+      placeholder: Provide any extra details here.
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        **Important:**
+        *   This issue tracker is primarily for bugs and feature requests. For general "how-to" questions, please use the [Discussions tab](https://github.com/LSXPrime/SoundFlow/discussions) if available. However, if your question might reveal a documentation gap or an unintuitive aspect of the library, this is the right place.
+        *   **This is NOT for reporting bugs or requesting features.** Please use the appropriate templates for those.

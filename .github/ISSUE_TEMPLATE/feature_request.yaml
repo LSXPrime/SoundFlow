@@ -1,0 +1,100 @@
+name: "✨ Feature Request"
+description: Suggest an idea or enhancement for SoundFlow
+title: "[FEAT] Brief description of the feature"
+labels: ["enhancement"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Thank you for suggesting a feature! We appreciate your input.**
+
+  - type: checkboxes
+    id: requirements
+    attributes:
+      label: Requirements
+      options:
+        - label: I have searched the existing issues to ensure this feature has not already been requested.
+          required: true
+        - label: I have clearly described the problem and the proposed solution.
+          required: true
+        - label: I have considered alternative solutions.
+          required: true
+
+  - type: textarea
+    id: problem-description
+    attributes:
+      label: 1. Is your feature request related to a problem? Please describe.
+      description: A clear and concise description of what the problem is.
+      placeholder: |
+        Example: I'm always frustrated when [...] because [...] and I would like to be able to [...]
+    validations:
+      required: true
+
+  - type: textarea
+    id: desired-solution
+    attributes:
+      label: 2. Describe the Solution You'd Like
+      description: |
+        A clear and concise description of what you want to happen.
+        *   What is the desired behavior?
+        *   How would this feature be used? (e.g., API examples, new component, modification to existing one)
+      placeholder: Describe your ideal solution here.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives-considered
+    attributes:
+      label: 3. Describe Alternatives You've Considered
+      description: |
+        A clear and concise description of any alternative solutions or features you've considered.
+        *   Why were they not suitable?
+      placeholder: What other solutions did you think about, and why aren't they a good fit?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-api
+    attributes:
+      label: 4. Proposed API (if applicable)
+      description: If this involves new or changed API, please provide a sketch of how it might look.
+      placeholder: |
+        ```csharp
+        // public class NewComponent : SoundComponent { ... }
+        // public void ExistingComponent.NewMethod(ParameterType param) { ... }
+        ```
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: benefits
+    attributes:
+      label: 5. Benefits
+      description: |
+        What are the benefits of implementing this feature?
+        *   Who would benefit from this?
+        *   How would it improve SoundFlow?
+      placeholder: How would this feature help SoundFlow and its users?
+    validations:
+      required: true
+
+  - type: textarea
+    id: drawbacks-challenges
+    attributes:
+      label: 6. Potential Drawbacks/Challenges
+      description: Are there any potential downsides or implementation challenges you foresee?
+      placeholder: Any concerns about implementing this feature?
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 7. Additional Context
+      description: Add any other context, examples, mockups, or links to relevant resources or similar features in other libraries.
+      placeholder: Any other relevant information or ideas.
+    validations:
+      required: false

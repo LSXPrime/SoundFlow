@@ -1,0 +1,193 @@
+name: "🐛 Bug Report"
+description: Create a report to help us improve SoundFlow
+title: "[BUG] Brief description of the bug"
+labels: ["bug"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Thank you for reporting a bug! To help us understand and fix the issue, please provide the following information:**
+
+  - type: checkboxes
+    id: requirements
+    attributes:
+      label: Requirements
+      options:
+        - label: I have searched the existing issues to ensure this bug has not already been reported.
+          required: true
+        - label: I have provided a clear and concise description of the bug.
+          required: true
+        - label: I have provided detailed steps to reproduce the bug.
+          required: true
+        - label: I have included a minimal reproducible example (MRE) if applicable.
+          required: true
+        - label: I have provided error messages and stack traces if applicable.
+          required: true
+        - label: I have completed the environment information.
+          required: true
+
+  - type: textarea
+    id: describe-bug
+    attributes:
+      label: 1. Describe the Bug
+      description: A clear and concise description of what the bug is.
+      placeholder: Tell us what you're seeing!
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: 2. Steps to Reproduce
+      description: |
+        Please provide detailed steps to reproduce the behavior:
+        1. Go to '...'
+        2. Call method '....' with parameters '....'
+        3. Configure component '....' with settings '....'
+        4. See error / Observe unexpected behavior
+      placeholder: Describe the exact steps here.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: 3. Expected Behavior
+      description: A clear and concise description of what you expected to happen.
+      placeholder: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-behavior
+    attributes:
+      label: 4. Current Behavior
+      description: A clear and concise description of what actually happens.
+      placeholder: What is happening now?
+    validations:
+      required: true
+
+  - type: textarea
+    id: mre
+    attributes:
+      label: 5. Minimal Reproducible Example (MRE)
+      description: |
+        Please provide a *minimal* code snippet that demonstrates the bug. This is crucial for us to quickly identify and fix the issue.
+        If the code is too long, please link to a Gist or a small repository.
+      placeholder: |
+        ```csharp
+        // Your MRE code here
+        ```
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: error-messages
+    attributes:
+      label: 6. Error Messages and Stack Trace (if applicable)
+      description: If an exception is thrown, please paste the full error message and stack trace below.
+      placeholder: |
+        ```
+        (Paste full error message and stack trace here)
+        ```
+      render: shell
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ### 7. Environment (please complete the following information):
+
+  - type: input
+    id: sf-version
+    attributes:
+      label: SoundFlow Version
+      description: e.g., 1.0.0, or commit SHA if building from source
+    validations:
+      required: true
+
+  - type: input
+    id: net-version
+    attributes:
+      label: .NET Version
+      description: e.g., .NET 8.0, .NET 9.0
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating System
+      description: e.g., Windows 11, macOS Sonoma 14.2, Ubuntu 22.04
+    validations:
+      required: true
+
+  - type: input
+    id: architecture
+    attributes:
+      label: Architecture
+      description: e.g., x64, ARM64
+    validations:
+      required: true
+
+  - type: input
+    id: audio-backend
+    attributes:
+      label: Audio Backend Used (if known)
+      description: e.g., WASAPI, CoreAudio, etc.
+    validations:
+      required: false
+
+  - type: input
+    id: audio-hardware
+    attributes:
+      label: Specific Audio Hardware (if relevant)
+      description: e.g., Realtek HD Audio, Focusrite Scarlett 2i2
+    validations:
+      required: false 
+
+  - type: textarea
+    id: affected-components
+    attributes:
+      label: 8. Affected Components/Modules (if known)
+      description: |
+        List any specific SoundFlow components, modifiers, providers, or extensions you believe are related to this bug.
+        e.g., `SoundPlayer`, `WebRtcApmModifier`, `MiniAudioDecoder`, `NetworkDataProvider`
+      placeholder: |
+        e.g., `SoundPlayer`, `WebRtcApmModifier`
+    validations:
+      required: false
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: 9. Impact
+      description: Describe the impact of this bug (e.g., crash, incorrect audio output, performance degradation, minor inconvenience).
+      placeholder: How severely does this bug affect you?
+    validations:
+      required: false
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: 10. Possible Workaround (if known)
+      description: If you've found a way to work around the issue, please describe it.
+      placeholder: Any temporary solutions you've found?
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 11. Additional Context
+      description: |
+        Add any other context about the problem here.
+        * Were there any recent changes to your environment or the library version?
+        * Is this bug consistently reproducible, or does it happen intermittently?
+      placeholder: Any other relevant information.
+    validations:
+      required: false

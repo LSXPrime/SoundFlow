@@ -1,0 +1,185 @@
+name: "⏱️ Performance Issue"
+description: Report a performance problem with SoundFlow
+title: "[PERF] Brief description of the performance issue"
+labels: []
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Thank you for reporting a performance issue! Accurate details are key to helping us optimize SoundFlow.**
+
+  - type: textarea
+    id: describe-perf-issue
+    attributes:
+      label: 1. Describe the Performance Issue
+      description: |
+        A clear and concise description of the performance problem.
+        *   Is it high CPU usage, high memory consumption, audio stuttering/glitches, slow initialization, etc.?
+      placeholder: Describe the performance problem you are observing.
+    validations:
+      required: true
+
+  - type: textarea
+    id: affected-area
+    attributes:
+      label: 2. Area of the Library Affected
+      description: |
+        Which part of SoundFlow seems to be causing the performance issue?
+        e.g., `SoundPlayer` with many instances, a specific `SoundModifier`, `MiniAudioEngine` processing, `NetworkDataProvider` streaming
+      placeholder: e.g., `SoundPlayer` instances
+    validations:
+      required: true
+
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 3. Scenario Causing Slowness
+      description: |
+        Describe the specific scenario or operations that trigger the performance problem.
+        Please provide steps if possible.
+      placeholder: Describe the steps or scenario that leads to the performance issue.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-performance
+    attributes:
+      label: 4. Expected Performance
+      description: |
+        What level of performance were you expecting in this scenario?
+        e.g., "CPU usage below 10%", "No audible glitches", "Modifier should process X samples in Y ms"
+      placeholder: What performance did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-performance
+    attributes:
+      label: 5. Actual Performance
+      description: |
+        Describe the observed performance. Provide metrics if possible:
+        *   **CPU Usage:** [e.g., "Sustained 80% on one core", "Spikes to 100%"]
+        *   **Memory Usage:** [e.g., "Increases by 100MB per minute", "Consumes 2GB RAM"]
+        *   **Latency/Glitches:** [e.g., "Audio stutters every 5 seconds", "Noticeable delay in processing"]
+        *   **Timing:** [e.g., "Method X takes 500ms to complete for a 1s buffer"]
+      placeholder: Describe the observed performance and provide metrics if available.
+    validations:
+      required: true
+
+  - type: textarea
+    id: mre
+    attributes:
+      label: 6. Minimal Reproducible Example (MRE) (Highly Recommended)
+      description: Please provide a *minimal* code snippet that demonstrates the performance issue. This is extremely helpful.
+      placeholder: |
+        ```csharp
+        // Your MRE code here
+        ```
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: profiling-data
+    attributes:
+      label: 7. Profiling Data (if available)
+      description: |
+        If you have run a profiler (e.g., dotTrace, PerfView, Visual Studio Profiler), please share:
+        *   Screenshots of hot paths.
+        *   Exported profiling sessions (if shareable).
+        *   Key findings from the profiler.
+      placeholder: Paste profiling data, links, or key findings here.
+      render: shell
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ### 8. Environment (please complete the following information):
+
+  - type: input
+    id: sf-version
+    attributes:
+      label: SoundFlow Version
+      description: e.g., 1.0.0, or commit SHA
+    validations:
+      required: true
+
+  - type: input
+    id: net-version
+    attributes:
+      label: .NET Version
+      description: e.g., .NET 8.0
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating System
+      description: e.g., Windows 11, macOS Sonoma, Ubuntu 22.04
+    validations:
+      required: true
+
+  - type: input
+    id: architecture
+    attributes:
+      label: Architecture
+      description: e.g., x64, ARM64
+    validations:
+      required: true
+
+  - type: input
+    id: audio-backend
+    attributes:
+      label: Audio Backend Used (if known)
+      description: e.g., MiniAudioEngine with WASAPI, CoreAudio, ALSA
+    validations:
+      required: false
+
+  - type: input
+    id: audio-hardware
+    attributes:
+      label: Specific Audio Hardware (if relevant)
+      description: e.g., CPU model, RAM amount, Audio Interface model
+    validations:
+      required: false
+
+  - type: input
+    id: audio-buffer-samplerate
+    attributes:
+      label: Audio Buffer Size / Sample Rate
+      description: e.g., 480 samples / 48000 Hz
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 9. Additional Context
+      description: |
+        Add any other relevant information.
+        *   Does the issue scale with input size, number of components, etc.?
+        *   Have you tried different configurations or settings?
+      placeholder: Any other relevant information.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: requirements-checklist
+    attributes:
+      label: Requirements Checklist
+      options:
+        - label: I have searched the existing issues to ensure this performance issue has not already been reported.
+          required: true
+        - label: I have provided a clear description of the issue and the scenario.
+          required: true
+        - label: I have included performance metrics if possible.
+          required: true
+        - label: I have considered providing an MRE.
+          required: true
+        - label: I have completed the environment information.
+          required: true
