@@ -25,7 +25,7 @@ public class MicrophoneDataProvider : ISoundDataProvider
     public MicrophoneDataProvider(int bufferSize = 8)
     {
         _audioEngine = AudioEngine.Instance;
-        if (_audioEngine.Capability != Capability.Record && _audioEngine.Capability != Capability.Mixed)
+        if (!_audioEngine.Capability.HasFlag(Capability.Record))
             throw new InvalidOperationException(
                 "AudioEngine must be initialized with Capability.Record or Capability.Mixed to use MicrophoneDataProvider.");
         _bufferSize = bufferSize;
