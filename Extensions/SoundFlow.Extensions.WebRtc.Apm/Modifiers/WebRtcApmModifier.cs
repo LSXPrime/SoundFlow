@@ -1,6 +1,7 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Runtime.InteropServices;
 using SoundFlow.Abstracts;
+using SoundFlow.Abstracts.Devices;
 using SoundFlow.Enums;
 
 namespace SoundFlow.Extensions.WebRtc.Apm.Modifiers;
@@ -12,6 +13,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm.Modifiers;
 /// </summary>
 public sealed class WebRtcApmModifier : SoundModifier, IDisposable
 {
+    private readonly AudioDevice _device;
     private AudioProcessingModule? _apm;
     private ApmConfig? _apmConfig;
     private readonly object _apmLock = new();
@@ -75,7 +77,12 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
         public bool Enabled
         {
             get => _enabled;
-            set { if (_enabled == value) return; _enabled = value; _parent.UpdateApmConfiguration(); }
+            set
+            {
+                if (_enabled == value) return;
+                _enabled = value;
+                _parent.UpdateApmConfiguration();
+            }
         }
 
         /// <summary>
@@ -85,7 +92,12 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
         public bool MobileMode
         {
             get => _mobileMode;
-            set { if (_mobileMode == value) return; _mobileMode = value; _parent.UpdateApmConfiguration(); }
+            set
+            {
+                if (_mobileMode == value) return;
+                _mobileMode = value;
+                _parent.UpdateApmConfiguration();
+            }
         }
 
         /// <summary>
@@ -135,7 +147,12 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
         public bool Enabled
         {
             get => _enabled;
-            set { if (_enabled == value) return; _enabled = value; _parent.UpdateApmConfiguration(); }
+            set
+            {
+                if (_enabled == value) return;
+                _enabled = value;
+                _parent.UpdateApmConfiguration();
+            }
         }
 
         /// <summary>
@@ -144,7 +161,12 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
         public NoiseSuppressionLevel Level
         {
             get => _level;
-            set { if (_level == value) return; _level = value; _parent.UpdateApmConfiguration(); }
+            set
+            {
+                if (_level == value) return;
+                _level = value;
+                _parent.UpdateApmConfiguration();
+            }
         }
 
         /// <summary>
@@ -182,7 +204,12 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
         public bool Agc1Enabled
         {
             get => _agc1Enabled;
-            set { if (_agc1Enabled == value) return; _agc1Enabled = value; _parent.UpdateApmConfiguration(); }
+            set
+            {
+                if (_agc1Enabled == value) return;
+                _agc1Enabled = value;
+                _parent.UpdateApmConfiguration();
+            }
         }
 
         /// <summary>
@@ -191,7 +218,12 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
         public GainControlMode Mode
         {
             get => _mode;
-            set { if (_mode == value) return; _mode = value; _parent.UpdateApmConfiguration(); }
+            set
+            {
+                if (_mode == value) return;
+                _mode = value;
+                _parent.UpdateApmConfiguration();
+            }
         }
 
         /// <summary>
@@ -201,7 +233,13 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
         public int TargetLevelDbfs
         {
             get => _targetLevelDbfs;
-            set { var v = Math.Clamp(value, -31, 0); if (_targetLevelDbfs == v) return; _targetLevelDbfs = v; _parent.UpdateApmConfiguration(); }
+            set
+            {
+                var v = Math.Clamp(value, -31, 0);
+                if (_targetLevelDbfs == v) return;
+                _targetLevelDbfs = v;
+                _parent.UpdateApmConfiguration();
+            }
         }
 
         /// <summary>
@@ -211,7 +249,13 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
         public int CompressionGainDb
         {
             get => _compressionGainDb;
-            set { var v = Math.Clamp(value, 0, 90); if (_compressionGainDb == v) return; _compressionGainDb = v; _parent.UpdateApmConfiguration(); }
+            set
+            {
+                var v = Math.Clamp(value, 0, 90);
+                if (_compressionGainDb == v) return;
+                _compressionGainDb = v;
+                _parent.UpdateApmConfiguration();
+            }
         }
 
         /// <summary>
@@ -220,7 +264,12 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
         public bool LimiterEnabled
         {
             get => _limiterEnabled;
-            set { if (_limiterEnabled == value) return; _limiterEnabled = value; _parent.UpdateApmConfiguration(); }
+            set
+            {
+                if (_limiterEnabled == value) return;
+                _limiterEnabled = value;
+                _parent.UpdateApmConfiguration();
+            }
         }
 
         /// <summary>
@@ -231,7 +280,12 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
         public bool Agc2Enabled
         {
             get => _agc2Enabled;
-            set { if (_agc2Enabled == value) return; _agc2Enabled = value; _parent.UpdateApmConfiguration(); }
+            set
+            {
+                if (_agc2Enabled == value) return;
+                _agc2Enabled = value;
+                _parent.UpdateApmConfiguration();
+            }
         }
 
 
@@ -245,7 +299,8 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
         /// <param name="compressionGainDb">Initial state of CompressionGainDb property.</param>
         /// <param name="limiterEnabled">Initial state of LimiterEnabled property.</param>
         /// <param name="agc2Enabled">Initial state of Agc2Enabled property.</param>
-        internal AutomaticGainControlSettings(WebRtcApmModifier parent, bool agc1Enabled, GainControlMode mode, int targetLevelDbfs, int compressionGainDb, bool limiterEnabled, bool agc2Enabled)
+        internal AutomaticGainControlSettings(WebRtcApmModifier parent, bool agc1Enabled, GainControlMode mode,
+            int targetLevelDbfs, int compressionGainDb, bool limiterEnabled, bool agc2Enabled)
         {
             _parent = parent;
             _agc1Enabled = agc1Enabled;
@@ -259,7 +314,7 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
 
     /// <summary>
     /// Settings for configuring the processing pipeline within WebRTC APM,
-    /// specifically how multi-channel audio is handled and downmixed.
+    /// specifically how multichannel audio is handled and downmixed.
     /// </summary>
     public class ProcessingPipelineSettings
     {
@@ -269,32 +324,47 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
         private DownmixMethod _downmixMethod;
 
         /// <summary>
-        /// Gets or sets a value indicating whether multi-channel processing is enabled for the capture (near-end) stream.
+        /// Gets or sets a value indicating whether multichannel processing is enabled for the capture (near-end) stream.
         /// If false, input channels might be downmixed before processing.
         /// </summary>
         public bool UseMultichannelCapture
         {
             get => _useMultichannelCapture;
-            set { if (_useMultichannelCapture == value) return; _useMultichannelCapture = value; _parent.UpdateApmConfiguration(); }
+            set
+            {
+                if (_useMultichannelCapture == value) return;
+                _useMultichannelCapture = value;
+                _parent.UpdateApmConfiguration();
+            }
         }
 
         /// <summary>
-        /// Gets or sets a value indicating whether multi-channel processing is enabled for the render (far-end) stream.
+        /// Gets or sets a value indicating whether multichannel processing is enabled for the render (far-end) stream.
         /// If false, input channels might be downmixed before processing.
         /// </summary>
         public bool UseMultichannelRender
         {
             get => _useMultichannelRender;
-            set { if (_useMultichannelRender == value) return; _useMultichannelRender = value; _parent.UpdateApmConfiguration(); }
+            set
+            {
+                if (_useMultichannelRender == value) return;
+                _useMultichannelRender = value;
+                _parent.UpdateApmConfiguration();
+            }
         }
 
         /// <summary>
-        /// Gets or sets the method used for downmixing channels if multi-channel processing is disabled for a stream.
+        /// Gets or sets the method used for downmixing channels if multichannel processing is disabled for a stream.
         /// </summary>
         public DownmixMethod DownmixMethod
         {
             get => _downmixMethod;
-            set { if (_downmixMethod == value) return; _downmixMethod = value; _parent.UpdateApmConfiguration(); }
+            set
+            {
+                if (_downmixMethod == value) return;
+                _downmixMethod = value;
+                _parent.UpdateApmConfiguration();
+            }
         }
 
         /// <summary>
@@ -304,7 +374,8 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
         /// <param name="useMultichannelCapture">Initial state for UseMultichannelCapture property.</param>
         /// <param name="useMultichannelRender">Initial state for UseMultichannelRender property.</param>
         /// <param name="downmixMethod">Initial state for DownmixMethod property.</param>
-        internal ProcessingPipelineSettings(WebRtcApmModifier parent, bool useMultichannelCapture, bool useMultichannelRender, DownmixMethod downmixMethod)
+        internal ProcessingPipelineSettings(WebRtcApmModifier parent, bool useMultichannelCapture,
+            bool useMultichannelRender, DownmixMethod downmixMethod)
         {
             _parent = parent;
             _useMultichannelCapture = useMultichannelCapture;
@@ -312,7 +383,6 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
             _downmixMethod = downmixMethod;
         }
     }
-
 
     #endregion
 
@@ -334,11 +404,12 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
     public AutomaticGainControlSettings AutomaticGainControl { get; }
 
     /// <summary>
-    /// Gets the settings object for configuring the processing pipeline (multi-channel, downmixing).
+    /// Gets the settings object for configuring the processing pipeline (multichannel, downmixing).
     /// </summary>
     public ProcessingPipelineSettings ProcessingPipeline { get; }
 
     private bool _highPassFilterEnabled;
+
     /// <summary>
     /// Gets or sets a value indicating whether the High Pass Filter is enabled.
     /// This filter removes frequencies below 80 Hz.
@@ -346,10 +417,16 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
     public bool HighPassFilterEnabled
     {
         get => _highPassFilterEnabled;
-        set { if (_highPassFilterEnabled == value) return; _highPassFilterEnabled = value; UpdateApmConfiguration(); }
+        set
+        {
+            if (_highPassFilterEnabled == value) return;
+            _highPassFilterEnabled = value;
+            UpdateApmConfiguration();
+        }
     }
 
     private bool _preAmplifierEnabled;
+
     /// <summary>
     /// Gets or sets a value indicating whether the Pre-Amplifier is enabled.
     /// Applies a gain factor before other processing steps.
@@ -357,10 +434,16 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
     public bool PreAmplifierEnabled
     {
         get => _preAmplifierEnabled;
-        set { if (_preAmplifierEnabled == value) return; _preAmplifierEnabled = value; UpdateApmConfiguration(); }
+        set
+        {
+            if (_preAmplifierEnabled == value) return;
+            _preAmplifierEnabled = value;
+            UpdateApmConfiguration();
+        }
     }
 
     private float _preAmplifierGainFactor = 1.0f;
+
     /// <summary>
     /// Gets or sets the gain factor applied by the Pre-Amplifier.
     /// Only active if <see cref="PreAmplifierEnabled"/> is true.
@@ -368,7 +451,12 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
     public float PreAmplifierGainFactor
     {
         get => _preAmplifierGainFactor;
-        set { if (Math.Abs(_preAmplifierGainFactor - value) < 0.001f) return; _preAmplifierGainFactor = value; UpdateApmConfiguration(); }
+        set
+        {
+            if (Math.Abs(_preAmplifierGainFactor - value) < 0.001f) return;
+            _preAmplifierGainFactor = value;
+            UpdateApmConfiguration();
+        }
     }
 
 
@@ -382,6 +470,7 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
     /// <summary>
     /// Initializes a new instance of the <see cref="WebRtcApmModifier"/> class with specified settings.
     /// </summary>
+    /// <param name="device">The capture device to source audio from.</param>
     /// <param name="aecEnabled">Initial state for Echo Cancellation Enabled.</param>
     /// <param name="aecMobileMode">Initial state for Echo Cancellation Mobile Mode.</param>
     /// <param name="aecLatencyMs">Initial state for Echo Cancellation Latency in ms.</param>
@@ -401,6 +490,7 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
     /// <param name="downmixMethod">Initial state for ProcessingPipeline.DownmixMethod.</param>
     /// <exception cref="ArgumentException">Thrown if the audio sample rate is not supported by WebRTC APM (8000, 16000, 32000, or 48000 Hz).</exception>
     public WebRtcApmModifier(
+        AudioDevice device,
         bool aecEnabled = false, bool aecMobileMode = false, int aecLatencyMs = 40,
         bool nsEnabled = false, NoiseSuppressionLevel nsLevel = NoiseSuppressionLevel.High,
         bool agc1Enabled = false, GainControlMode agcMode = GainControlMode.AdaptiveDigital,
@@ -408,30 +498,35 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
         bool agc2Enabled = false,
         bool hpfEnabled = false,
         bool preAmpEnabled = false, float preAmpGain = 1.0f,
-        bool? useMultichannelCapture = null, bool? useMultichannelRender = null, DownmixMethod downmixMethod = DownmixMethod.AverageChannels)
+        bool? useMultichannelCapture = null, bool? useMultichannelRender = null,
+        DownmixMethod downmixMethod = DownmixMethod.AverageChannels)
     {
-        _sampleRate = AudioEngine.Instance.SampleRate;
-        _numChannels = AudioEngine.Channels;
+        _device = device;
+        _sampleRate = _device.Format.SampleRate;
+        _numChannels = _device.Format.Channels;
 
         if (_sampleRate != 8000 && _sampleRate != 16000 && _sampleRate != 32000 && _sampleRate != 48000)
-            throw new ArgumentException($"Unsupported sample rate for WebRTC Audio Processing Module: {_sampleRate} Hz. Must be 8k, 16k, 32k, or 48k.");
+            throw new ArgumentException(
+                $"Unsupported sample rate for WebRTC Audio Processing Module: {_sampleRate} Hz. Must be 8k, 16k, 32k, or 48k.");
 
         _apmFrameSizePerChannel = AudioProcessingModule.GetFrameSize(_sampleRate);
         _apmFrameSizeBytesPerChannel = _apmFrameSizePerChannel * BytesPerSample;
 
         if (_apmFrameSizePerChannel == 0 || _numChannels <= 0)
         {
-            Console.Error.WriteLine($"WebRTC APM Modifier: Invalid frame size or channel count ({_apmFrameSizePerChannel}, {_numChannels}). Disabling.");
+            Console.Error.WriteLine(
+                $"WebRTC APM Modifier: Invalid frame size or channel count ({_apmFrameSizePerChannel}, {_numChannels}). Disabling.");
             Enabled = false;
             // Initialize readonly properties to avoid null issues if accessed before full init
             EchoCancellation = new EchoCancellationSettings(this, false, false, 0);
             NoiseSuppression = new NoiseSuppressionSettings(this, false, NoiseSuppressionLevel.Low);
-            AutomaticGainControl = new AutomaticGainControlSettings(this, false, GainControlMode.FixedDigital, 0, 0, false, false);
+            AutomaticGainControl =
+                new AutomaticGainControlSettings(this, false, GainControlMode.FixedDigital, 0, 0, false, false);
             ProcessingPipeline = new ProcessingPipelineSettings(this, false, false, DownmixMethod.AverageChannels);
             return;
         }
 
-        // Determine default multi-channel settings based on channel count, unless explicitly overridden
+        // Determine default multichannel settings based on channel count, unless explicitly overridden
         var defaultUseMultiChannel = _numChannels > 1;
         var initialUseMultichannelCapture = useMultichannelCapture ?? defaultUseMultiChannel;
         var initialUseMultichannelRender = useMultichannelRender ?? defaultUseMultiChannel;
@@ -439,8 +534,10 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
 
         EchoCancellation = new EchoCancellationSettings(this, aecEnabled, aecMobileMode, aecLatencyMs);
         NoiseSuppression = new NoiseSuppressionSettings(this, nsEnabled, nsLevel);
-        AutomaticGainControl = new AutomaticGainControlSettings(this, agc1Enabled, agcMode, agcTargetLevel, agcCompressionGain, agcLimiter, agc2Enabled);
-        ProcessingPipeline = new ProcessingPipelineSettings(this, initialUseMultichannelCapture, initialUseMultichannelRender, downmixMethod); // Initialize new property
+        AutomaticGainControl = new AutomaticGainControlSettings(this, agc1Enabled, agcMode, agcTargetLevel,
+            agcCompressionGain, agcLimiter, agc2Enabled);
+        ProcessingPipeline = new ProcessingPipelineSettings(this, initialUseMultichannelCapture,
+            initialUseMultichannelRender, downmixMethod); // Initialize new property
         _highPassFilterEnabled = hpfEnabled;
         _preAmplifierEnabled = preAmpEnabled;
         _preAmplifierGainFactor = preAmpGain;
@@ -501,10 +598,21 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
                 _outputChannelArrayPtr = _outputChannelArrayHandle.AddrOfPinnedObject();
                 _farendChannelArrayHandle = GCHandle.Alloc(_farendChannelPtrs, GCHandleType.Pinned);
                 _farendChannelArrayPtr = _farendChannelArrayHandle.AddrOfPinnedObject();
-                _dummyReverseOutputChannelArrayHandle = GCHandle.Alloc(_dummyReverseOutputChannelPtrs, GCHandleType.Pinned);
+                _dummyReverseOutputChannelArrayHandle =
+                    GCHandle.Alloc(_dummyReverseOutputChannelPtrs, GCHandleType.Pinned);
                 _dummyReverseOutputChannelArrayPtr = _dummyReverseOutputChannelArrayHandle.AddrOfPinnedObject();
 
-                AudioEngine.OnAudioProcessed += HandleAudioEngineProcessedForAec;
+                if (EchoCancellation.Enabled)
+                    switch (_device)
+                    {
+                        case AudioCaptureDevice audioCaptureDevice:
+                            audioCaptureDevice.OnAudioProcessed += HandleAudioEngineProcessedForAec;
+                            break;
+                        case FullDuplexDevice fullDuplexDevice:
+                            fullDuplexDevice.OnAudioProcessed += HandleAudioEngineProcessedForAec;
+                            break;
+                    }
+
                 UpdateApmStreamDelay();
 
                 _isApmSuccessfullyInitialized = true;
@@ -530,7 +638,7 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
         config.SetHighPassFilter(HighPassFilterEnabled);
         config.SetPreAmplifier(PreAmplifierEnabled, PreAmplifierGainFactor);
         config.SetPipeline(_sampleRate, ProcessingPipeline.UseMultichannelCapture,
-                           ProcessingPipeline.UseMultichannelRender, ProcessingPipeline.DownmixMethod);
+            ProcessingPipeline.UseMultichannelRender, ProcessingPipeline.DownmixMethod);
     }
 
     private void UpdateApmConfiguration()
@@ -563,7 +671,8 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
     /// Output samples are dequeued and written back to the buffer.
     /// </summary>
     /// <param name="buffer">The audio buffer to process (interleaved float samples).</param>
-    public override void Process(Span<float> buffer) // Near-end processing
+    /// <param name="channels">The number of channels in the audio buffer.</param>
+    public override void Process(Span<float> buffer, int channels) // Near-end processing
     {
         if (!Enabled || !_isApmSuccessfullyInitialized || _apm == null || _apmConfig == null ||
             _inputStreamConfig == null || _outputStreamConfig == null || _deinterleavedInputApmFrame == null ||
@@ -584,7 +693,8 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
             try
             {
                 for (var i = 0; i < totalSamplesInApmFrame; i++)
-                    if (!_inputRingBuffer.TryDequeue(out currentApmInterleavedInputFrame[i])) break;
+                    if (!_inputRingBuffer.TryDequeue(out currentApmInterleavedInputFrame[i]))
+                        break;
 
                 Deinterleave(currentApmInterleavedInputFrame.AsSpan(0, totalSamplesInApmFrame),
                     _numChannels, _apmFrameSizePerChannel, _deinterleavedInputApmFrame);
@@ -597,7 +707,7 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
                 {
                     if (!_isApmSuccessfullyInitialized || _apm == null) error = ApmError.UnspecifiedError;
                     else
-                        error = NativeMethods.webrtc_apm_process_stream(
+                        error = NativeMethods.ProcessStream(
                             _apm.NativePtr, _inputChannelArrayPtr,
                             _inputStreamConfig.NativePtr, _outputStreamConfig.NativePtr,
                             _outputChannelArrayPtr);
@@ -607,7 +717,8 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
                 if (error == ApmError.NoError)
                 {
                     for (var ch = 0; ch < _numChannels; ch++)
-                        Marshal.Copy(_outputChannelPtrs![ch], _deinterleavedOutputApmFrame![ch], 0, _apmFrameSizePerChannel);
+                        Marshal.Copy(_outputChannelPtrs![ch], _deinterleavedOutputApmFrame![ch], 0,
+                            _apmFrameSizePerChannel);
                     resultBufferToInterleave = _deinterleavedOutputApmFrame;
                 }
                 else
@@ -657,7 +768,8 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
             try
             {
                 for (var i = 0; i < totalSamplesInApmFrame; i++)
-                    if (!_farendInputRingBuffer.TryDequeue(out currentApmInterleavedFarendFrame[i])) break;
+                    if (!_farendInputRingBuffer.TryDequeue(out currentApmInterleavedFarendFrame[i]))
+                        break;
 
                 Deinterleave(currentApmInterleavedFarendFrame.AsSpan(0, totalSamplesInApmFrame),
                     _numChannels, _apmFrameSizePerChannel, _deinterleavedFarendApmFrame);
@@ -670,11 +782,12 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
                 {
                     if (!_isApmSuccessfullyInitialized || _apm == null) error = ApmError.UnspecifiedError;
                     else
-                        error = NativeMethods.webrtc_apm_process_reverse_stream(
+                        error = NativeMethods.ProcessReverseStream(
                             _apm.NativePtr, _farendChannelArrayPtr,
                             _reverseInputStreamConfig.NativePtr, _reverseOutputStreamConfig.NativePtr,
                             _dummyReverseOutputChannelArrayPtr);
                 }
+
                 if (error != ApmError.NoError)
                     Console.Error.WriteLine($"WebRTC APM: Error processing reverse stream: {error}.");
             }
@@ -692,9 +805,11 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
     /// <param name="channel">The channel index of the sample.</param>
     /// <returns>The processed sample (this method always throws).</returns>
     /// <exception cref="NotSupportedException">Always thrown by this method.</exception>
-    public override float ProcessSample(float sample, int channel) => throw new NotSupportedException("WebRtcApmModifier processes audio in frames.");
+    public override float ProcessSample(float sample, int channel) =>
+        throw new NotSupportedException("WebRtcApmModifier processes audio in frames.");
 
-    private static void Deinterleave(ReadOnlySpan<float> interleaved, int numChannels, int frameSizePerChannel, float[][]? deinterleavedTarget)
+    private static void Deinterleave(ReadOnlySpan<float> interleaved, int numChannels, int frameSizePerChannel,
+        float[][]? deinterleavedTarget)
     {
         if (deinterleavedTarget == null) return;
         for (var ch = 0; ch < numChannels; ch++)
@@ -709,7 +824,8 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
         }
     }
 
-    private static void Interleave(float[][] deinterleaved, int numChannels, int frameSizePerChannel, Span<float> interleavedTarget)
+    private static void Interleave(float[][] deinterleaved, int numChannels, int frameSizePerChannel,
+        Span<float> interleavedTarget)
     {
         for (var ch = 0; ch < numChannels; ch++)
         {
@@ -731,25 +847,39 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
             if (_outputChannelArrayHandle.IsAllocated) _outputChannelArrayHandle.Free();
             if (_farendChannelArrayHandle.IsAllocated) _farendChannelArrayHandle.Free();
             if (_dummyReverseOutputChannelArrayHandle.IsAllocated) _dummyReverseOutputChannelArrayHandle.Free();
-            _inputChannelArrayPtr = _outputChannelArrayPtr = _farendChannelArrayPtr = _dummyReverseOutputChannelArrayPtr = nint.Zero;
+            _inputChannelArrayPtr = _outputChannelArrayPtr =
+                _farendChannelArrayPtr = _dummyReverseOutputChannelArrayPtr = nint.Zero;
 
             // Free HGlobal memory
             Action<nint[]?> freePtrArray = arr =>
             {
-                if (arr != null) foreach (var ptr in arr) if (ptr != nint.Zero) Marshal.FreeHGlobal(ptr);
+                if (arr != null)
+                    foreach (var ptr in arr)
+                        if (ptr != nint.Zero)
+                            Marshal.FreeHGlobal(ptr);
             };
-            freePtrArray(_inputChannelPtrs); _inputChannelPtrs = null;
-            freePtrArray(_outputChannelPtrs); _outputChannelPtrs = null;
-            freePtrArray(_farendChannelPtrs); _farendChannelPtrs = null;
-            freePtrArray(_dummyReverseOutputChannelPtrs); _dummyReverseOutputChannelPtrs = null;
+            freePtrArray(_inputChannelPtrs);
+            _inputChannelPtrs = null;
+            freePtrArray(_outputChannelPtrs);
+            _outputChannelPtrs = null;
+            freePtrArray(_farendChannelPtrs);
+            _farendChannelPtrs = null;
+            freePtrArray(_dummyReverseOutputChannelPtrs);
+            _dummyReverseOutputChannelPtrs = null;
 
             // Dispose managed APM wrappers
-            _apm?.Dispose(); _apm = null;
-            _apmConfig?.Dispose(); _apmConfig = null;
-            _inputStreamConfig?.Dispose(); _inputStreamConfig = null;
-            _outputStreamConfig?.Dispose(); _outputStreamConfig = null;
-            _reverseInputStreamConfig?.Dispose(); _reverseInputStreamConfig = null;
-            _reverseOutputStreamConfig?.Dispose(); _reverseOutputStreamConfig = null;
+            _apm?.Dispose();
+            _apm = null;
+            _apmConfig?.Dispose();
+            _apmConfig = null;
+            _inputStreamConfig?.Dispose();
+            _inputStreamConfig = null;
+            _outputStreamConfig?.Dispose();
+            _outputStreamConfig = null;
+            _reverseInputStreamConfig?.Dispose();
+            _reverseInputStreamConfig = null;
+            _reverseOutputStreamConfig?.Dispose();
+            _reverseOutputStreamConfig = null;
 
             _isApmSuccessfullyInitialized = false;
         }
@@ -763,11 +893,16 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
     {
         if (!_isDisposed)
         {
-            if (disposing)
-            {
-                if (_isApmSuccessfullyInitialized)
-                    AudioEngine.OnAudioProcessed -= HandleAudioEngineProcessedForAec;
-            }
+            if (disposing && _isApmSuccessfullyInitialized && EchoCancellation.Enabled)
+                switch (_device)
+                {
+                    case AudioCaptureDevice audioCaptureDevice:
+                        audioCaptureDevice.OnAudioProcessed -= HandleAudioEngineProcessedForAec;
+                        break;
+                    case FullDuplexDevice fullDuplexDevice:
+                        fullDuplexDevice.OnAudioProcessed -= HandleAudioEngineProcessedForAec;
+                        break;
+                }
 
             // Free unmanaged resources (native handles, pointers)
             DisposeApmNativeResources();
@@ -795,5 +930,9 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
     /// <summary>
     /// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.
     /// </summary>
-    public void Dispose() { Dispose(true); GC.SuppressFinalize(this); }
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
 }

@@ -1,4 +1,4 @@
-﻿using SoundFlow.Abstracts;
+using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio.Enums;
 using SoundFlow.Enums;
 using SoundFlow.Exceptions;
@@ -16,6 +16,7 @@ internal sealed unsafe class MiniAudioEncoder : ISoundEncoder
     private readonly Native.BufferProcessingCallback _writeCallback;
     private readonly Native.SeekCallback _seekCallback;
     private readonly object _syncLock = new();
+    private readonly int _channels;
 
     /// <summary>
     /// Constructs a new encoder to write to the given stream in the specified format.
@@ -29,6 +30,7 @@ internal sealed unsafe class MiniAudioEncoder : ISoundEncoder
         int sampleRate)
     {
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
+        _channels = channels;
 
         if (encodingFormat != EncodingFormat.Wav)
             throw new NotSupportedException("MiniAudio only supports WAV encoding.");
@@ -39,6 +41,7 @@ internal sealed unsafe class MiniAudioEncoder : ISoundEncoder
         // Allocate encoder and initialize
         _encoder = Native.AllocateEncoder();
         var result = Native.EncoderInit(_writeCallback = WriteCallback, _seekCallback = SeekCallback, nint.Zero, config, _encoder);
+        Native.Free(config);
         
         if (result != Result.Success)
             throw new BackendException("MiniAudio", result, "Unable to initialize encoder.");
@@ -59,7 +62,7 @@ internal sealed unsafe class MiniAudioEncoder : ISoundEncoder
             if (IsDisposed)
                 return 0;
 
-            var framesToWrite = (ulong)(samples.Length / AudioEngine.Channels);
+            var framesToWrite = (ulong)(samples.Length / _channels);
             ulong framesWritten = 0;
 
             fixed (float* pSamples = samples)
@@ -69,7 +72,7 @@ internal sealed unsafe class MiniAudioEncoder : ISoundEncoder
                     throw new BackendException("MiniAudio", result, "Failed to write PCM frames to encoder.");
             }
 
-            return (int)framesWritten * AudioEngine.Channels;
+            return (int)framesWritten * _channels;
         }
     }
 

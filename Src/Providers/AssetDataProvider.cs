@@ -1,6 +1,7 @@
 using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
+using SoundFlow.Structs;
 
 namespace SoundFlow.Providers;
 
@@ -16,22 +17,26 @@ public sealed class AssetDataProvider : ISoundDataProvider
     /// <summary>
     ///     Initializes a new instance of the <see cref="AssetDataProvider" /> class.
     /// </summary>
+    /// <param name="engine">The audio engine instance.</param>
     /// <param name="stream">The stream to read audio data from.</param>
-    public AssetDataProvider(Stream stream)
+    /// <param name="format">The audio format containing channels and sample rate and sample format</param>
+    public AssetDataProvider(AudioEngine engine, AudioFormat format, Stream stream)
     {
-        var decoder = AudioEngine.Instance.CreateDecoder(stream);
+        var decoder = engine.CreateDecoder(stream, format);
         _data = Decode(decoder);
         decoder.Dispose();
-        SampleRate = AudioEngine.Instance.SampleRate;
+        SampleRate = decoder.SampleRate;
         Length = _data.Length;
     }
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="AssetDataProvider" /> class.
     /// </summary>
+    /// <param name="engine">The audio engine instance.</param>
+    /// <param name="format">The audio format containing channels and sample rate and sample format</param>
     /// <param name="data">The audio data to read.</param>
-    public AssetDataProvider(byte[] data)
-        : this(new MemoryStream(data))
+    public AssetDataProvider(AudioEngine engine, AudioFormat format, byte[] data)
+        : this(engine, format, new MemoryStream(data))
     {
     }
 
@@ -104,10 +109,10 @@ public sealed class AssetDataProvider : ISoundDataProvider
         int samplesRead;
         do
         {
-            var block = new float[blockSize * AudioEngine.Channels];
+            var block = new float[blockSize * decoder.Channels];
             samplesRead = decoder.Decode(block);
             if (samplesRead > 0) blocks.Add(block);
-        } while (samplesRead == blockSize * AudioEngine.Channels);
+        } while (samplesRead == blockSize * decoder.Channels);
 
         var totalSamples = blocks.Sum(block => block.Length);
         var samples = new float[totalSamples];

@@ -15,7 +15,7 @@
         <RepositoryType>Github</RepositoryType>
         <PackageIcon>logo.png</PackageIcon>
         <PackageReadmeFile>README.md</PackageReadmeFile>
-        <Version>1.0.3</Version>
+        <Version>1.0.4</Version>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
     </PropertyGroup>
 
@@ -37,5 +37,9 @@
         <None Include="README.md" Pack="true" PackagePath="" />
         <None Include="..\..\LICENSE.md" Pack="true" PackagePath="" />
         <None Include="..\..\logo.png" Pack="true" PackagePath="" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="Native\" />
     </ItemGroup>
 </Project>

@@ -1,4 +1,4 @@
-﻿namespace SoundFlow.Editing.Persistence;
+namespace SoundFlow.Editing.Persistence;
 
 /// <summary>
 /// Represents the serializable settings for an audio segment within a project file.
@@ -97,36 +97,5 @@ public class ProjectAudioSegmentSettings
             TargetStretchDuration = settings.TargetStretchDuration
             // Modifiers and Analyzers would be mapped separately in ProjectSegment
         };
-    }
-
-    /// <summary>
-    /// Converts this <see cref="ProjectAudioSegmentSettings"/> DTO into a runtime <see cref="AudioSegmentSettings"/> object.
-    /// Note: This method populates scalar properties. Modifiers and Analyzers are typically populated externally (e.g., by <see cref="CompositionProjectManager"/>)
-    /// after the runtime instance is created.
-    /// </summary>
-    /// <returns>A new <see cref="AudioSegmentSettings"/> instance populated with data from this DTO.</returns>
-    public AudioSegmentSettings ToRuntime()
-    {
-        var runtimeSettings = new AudioSegmentSettings
-        {
-            Volume = Volume,
-            Pan = Pan,
-            FadeInDuration = FadeInDuration,
-            FadeInCurve = FadeInCurve,
-            FadeOutDuration = FadeOutDuration,
-            FadeOutCurve = FadeOutCurve,
-            IsReversed = IsReversed,
-            Loop = Loop,
-            SpeedFactor = SpeedFactor,
-            IsEnabled = IsEnabled,
-        };
-
-        if (TargetStretchDuration.HasValue)
-            runtimeSettings.TargetStretchDuration = TargetStretchDuration;
-        else
-            runtimeSettings.TimeStretchFactor = TimeStretchFactor;
-
-        // Modifiers and Analyzers are populated by CompositionProjectManager when deserializing the full segment
-        return runtimeSettings;
     }
 }

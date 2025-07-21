@@ -1,4 +1,4 @@
-﻿using SoundFlow.Abstracts;
+using SoundFlow.Abstracts;
 
 namespace SoundFlow.Editing;
 
@@ -20,8 +20,7 @@ public class AudioSegmentSettings
     private bool _isEnabled = true;
     private float _timeStretchFactor = 1.0f;
     private TimeSpan? _targetStretchDuration;
-
-
+    
     /// <summary>
     /// Gets or sets the parent <see cref="AudioSegment"/> that owns these settings.
     /// This is used internally to propagate dirty state.

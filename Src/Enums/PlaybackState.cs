@@ -1,4 +1,4 @@
-﻿namespace SoundFlow.Enums;
+namespace SoundFlow.Enums;
 
 /// <summary>
 /// Describes the current state of a player or recorder.

@@ -1,4 +1,4 @@
-﻿namespace SoundFlow.Interfaces;
+namespace SoundFlow.Interfaces;
 
 /// <summary>
 /// Provides methods for drawing visualization elements.

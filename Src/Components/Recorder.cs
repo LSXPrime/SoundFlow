@@ -1,13 +1,15 @@
-﻿using SoundFlow.Abstracts;
+using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using SoundFlow.Exceptions;
 using System.Collections.ObjectModel;
+using SoundFlow.Abstracts.Devices;
+using SoundFlow.Structs;
 
 namespace SoundFlow.Components;
 
 /// <summary>
-/// Component for recording audio data, either to a file or via a callback.
+/// Component for recording audio data from a capture device, either to a stream or via a callback.
 /// Supports various sample and encoding formats and can integrate with <see cref="SoundModifier"/> and <see cref="AudioAnalyzer"/> components for real-time processing and analysis during recording.
 /// Implements the <see cref="IDisposable"/> interface to ensure resources are released properly.
 /// </summary>
@@ -49,51 +51,45 @@ public class Recorder : IDisposable
     /// This is used when recording directly to memory or for custom processing, instead of to a file.
     /// </summary>
     public AudioProcessCallback? ProcessCallback;
-
+    
+    private readonly AudioCaptureDevice _captureDevice;
     private ISoundEncoder? _encoder;
     private readonly List<SoundModifier> _modifiers = [];
     private readonly List<AudioAnalyzer> _analyzers = [];
+    private readonly AudioEngine _engine;
+    private readonly AudioFormat _format;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Recorder"/> class to record audio to a file.
     /// </summary>
+    /// <param name="captureDevice">The capture device to record from.</param>
     /// <param name="stream">The stream to write encoded recorded audio to.</param>
-    /// <param name="sampleFormat">The desired sample format for recording. Defaults to <see cref="SampleFormat.F32"/>.</param>
     /// <param name="encodingFormat">The desired encoding format for the recorded audio file. Defaults to <see cref="EncodingFormat.Wav"/>.</param>
-    /// <param name="sampleRate">The desired sample rate for recording, in samples per second. Defaults to 44100 Hz.</param>
-    /// <param name="channels">The number of channels to record. Defaults to 2 (stereo).</param>
-    public Recorder(Stream stream,
-        SampleFormat sampleFormat = SampleFormat.F32,
-        EncodingFormat encodingFormat = EncodingFormat.Wav,
-        int sampleRate = 44100,
-        int channels = 2)
+    public Recorder(AudioCaptureDevice captureDevice, Stream stream, EncodingFormat encodingFormat = EncodingFormat.Wav)
     {
-        SampleFormat = sampleFormat;
+        _captureDevice = captureDevice;
+        _engine = captureDevice.Engine;
+        SampleFormat = captureDevice.Format.Format;
         EncodingFormat = encodingFormat;
         Stream = stream;
-        SampleRate = sampleRate;
-        Channels = channels;
+        SampleRate = captureDevice.Format.SampleRate;
+        Channels = captureDevice.Format.Channels;
+        _format = captureDevice.Format;
     }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Recorder"/> class to record audio and process it via a callback function.
     /// </summary>
+    /// <param name="captureDevice">The capture device to record from.</param>
     /// <param name="callback">The callback function to be invoked when audio data is processed. This function should handle the recorded audio data.</param>
-    /// <param name="sampleFormat">The desired sample format for recording. Defaults to <see cref="SampleFormat.F32"/>.</param>
-    /// <param name="encodingFormat">The encoding format (primarily for internal use or if an encoder is manually managed). Defaults to <see cref="EncodingFormat.Wav"/>.</param>
-    /// <param name="sampleRate">The desired sample rate for recording, in samples per second. Defaults to 44100 Hz.</param>
-    /// <param name="channels">The number of channels to record. Defaults to 2 (stereo).</param>
-    public Recorder(AudioProcessCallback callback,
-        SampleFormat sampleFormat = SampleFormat.F32,
-        EncodingFormat encodingFormat = EncodingFormat.Wav,
-        int sampleRate = 44100,
-        int channels = 2)
+    public Recorder(AudioCaptureDevice captureDevice, AudioProcessCallback callback)
     {
+        _captureDevice = captureDevice;
+        _engine = captureDevice.Engine;
         ProcessCallback = callback;
-        SampleFormat = sampleFormat;
-        EncodingFormat = encodingFormat;
-        SampleRate = sampleRate;
-        Channels = channels;
+        SampleFormat = captureDevice.Format.Format;
+        SampleRate = captureDevice.Format.SampleRate;
+        Channels = captureDevice.Format.Channels;
     }
 
     /// <summary>
@@ -120,12 +116,14 @@ public class Recorder : IDisposable
         if (State == PlaybackState.Playing)
             return;
 
-        _encoder = AudioEngine.Instance.CreateEncoder(Stream, EncodingFormat, SampleFormat, Channels, SampleRate);
-        if (_encoder == null)
-            throw new BackendException(AudioEngine.Instance.GetType().Name, Result.Error,
-                "Failed to create encoder.");
+        if (Stream != Stream.Null)
+        {
+            _encoder = _engine.CreateEncoder(Stream, EncodingFormat, _format);
+            if (_encoder == null)
+                throw new BackendException(_engine.GetType().Name, Result.Error, "Failed to create encoder.");
+        }
 
-        AudioEngine.OnAudioProcessed += OnOnAudioProcessed;
+        _captureDevice.OnAudioProcessed += OnAudioProcessed;
         State = PlaybackState.Playing;
     }
 
@@ -164,7 +162,7 @@ public class Recorder : IDisposable
         if (State == PlaybackState.Stopped)
             return;
 
-        AudioEngine.OnAudioProcessed -= OnOnAudioProcessed;
+        _captureDevice.OnAudioProcessed -= OnAudioProcessed;
 
         _encoder?.Dispose();
         _encoder = null;
@@ -216,7 +214,7 @@ public class Recorder : IDisposable
     /// </summary>
     /// <param name="samples">A span containing the audio samples to process.</param>
     /// <param name="capability">The audio capability associated with the processed samples (e.g., input or output).</param>
-    private void OnOnAudioProcessed(Span<float> samples, Capability capability)
+    private void OnAudioProcessed(Span<float> samples, Capability capability)
     {
         if (State != PlaybackState.Playing)
             return;
@@ -224,13 +222,13 @@ public class Recorder : IDisposable
         // Apply modifiers
         foreach (var modifier in _modifiers)
         {
-            modifier.Process(samples);
+            modifier.Process(samples, Channels);
         }
 
         // Process analyzers
         foreach (var analyzer in _analyzers)
         {
-             analyzer.Process(samples);
+             analyzer.Process(samples, Channels);
         }
 
         // Pass samples
@@ -242,7 +240,7 @@ public class Recorder : IDisposable
     public void Dispose()
     {
         StopRecording();
-        AudioEngine.OnAudioProcessed -= OnOnAudioProcessed;
+        _captureDevice.OnAudioProcessed -= OnAudioProcessed;
         ProcessCallback = null;
         _modifiers.Clear();
         _analyzers.Clear();

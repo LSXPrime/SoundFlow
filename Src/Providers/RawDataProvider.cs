@@ -1,4 +1,4 @@
-﻿using SoundFlow.Enums;
+using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using SoundFlow.Utils;
 using System.Buffers;
@@ -20,84 +20,44 @@ public class RawDataProvider : ISoundDataProvider
     private readonly short[]? _shortData;
     private readonly SampleFormat _sampleFormat;
     private int _position;
-
-    /// <summary>
-    ///     Creates a new <see cref="RawDataProvider"/> instance from a raw PCM stream.
-    /// </summary>
-    /// <param name="pcmStream">The stream containing the raw PCM audio data.</param>
-    /// <param name="sampleFormat">The sample format of the PCM data in the stream.</param>
-    /// <exception cref="ArgumentNullException">
-    ///     <paramref name="pcmStream"/> cannot be <see langword="null"/>.
-    /// </exception>
-    /// <exception cref="ArgumentException">
-    ///     <paramref name="sampleFormat"/> cannot be <see cref="SampleFormat.Unknown"/>.
-    /// </exception>
-    public RawDataProvider(Stream pcmStream, SampleFormat sampleFormat)
-    {
-        _pcmStream = pcmStream ?? throw new ArgumentNullException(nameof(pcmStream));
-        _sampleFormat = sampleFormat != SampleFormat.Unknown ? sampleFormat 
-            : throw new ArgumentException("SampleFormat cannot be Unknown for RawDataProvider when using a stream.", nameof(sampleFormat));
-    }
-
-    /// <summary>
-    ///     Creates a new <see cref="RawDataProvider"/> instance from a raw float array.
-    ///     The sample format for float array sources is always <see cref="SampleFormat.F32"/>.
-    /// </summary>
-    /// <param name="rawSamples">The array containing the raw PCM audio data in float format. This array is copied by reference.</param>
-    /// <exception cref="ArgumentNullException">
-    ///     <paramref name="rawSamples"/> cannot be <see langword="null"/>.
-    /// </exception>
+    
     public RawDataProvider(float[] rawSamples)
     {
         _floatData = rawSamples ?? throw new ArgumentNullException(nameof(rawSamples));
         _sampleFormat = SampleFormat.F32;
+        SampleRate = 48000; // Assume default, as there's no other info
     }
-
-    /// <summary>
-    ///     Creates a new <see cref="RawDataProvider"/> instance from a raw byte array.
-    /// </summary>
-    /// <param name="rawBytes">The array containing the raw PCM audio data in byte format.</param>
-    /// <param name="sampleFormat">The sample format of the PCM data in the array.</param>
-    /// <exception cref="ArgumentNullException">
-    ///     <paramref name="rawBytes"/> cannot be <see langword="null"/>.
-    /// </exception>
-    /// <exception cref="ArgumentException">
-    ///     <paramref name="sampleFormat"/> cannot be <see cref="SampleFormat.Unknown"/>.
-    /// </exception>
-    public RawDataProvider(byte[] rawBytes, SampleFormat sampleFormat)
+    
+    public RawDataProvider(Stream pcmStream, SampleFormat sampleFormat, int sampleRate, int channels)
+    {
+        _pcmStream = pcmStream ?? throw new ArgumentNullException(nameof(pcmStream));
+        _sampleFormat = sampleFormat != SampleFormat.Unknown ? sampleFormat 
+            : throw new ArgumentException("SampleFormat cannot be Unknown for RawDataProvider when using a stream.", nameof(sampleFormat));
+        SampleRate = sampleRate;
+    }
+    
+    public RawDataProvider(byte[] rawBytes, SampleFormat sampleFormat, int sampleRate, int channels)
     {
         _byteArray = rawBytes ?? throw new ArgumentNullException(nameof(rawBytes));
         _sampleFormat = sampleFormat != SampleFormat.Unknown ? sampleFormat 
             : throw new ArgumentException("SampleFormat cannot be Unknown for RawDataProvider when using a byte array.", nameof(sampleFormat));
+        SampleRate = sampleRate;
     }
-
-    /// <summary>
-    ///     Creates a new <see cref="RawDataProvider"/> instance from a raw integer array.
-    ///     The sample format for integer array sources is always <see cref="SampleFormat.S32"/>.
-    /// </summary>
-    /// <param name="rawSamples">The array containing the raw PCM audio data in signed 32-bit integer format.</param>
-    /// <exception cref="ArgumentNullException">
-    ///     <paramref name="rawSamples"/> cannot be <see langword="null"/>.
-    /// </exception>
-    public RawDataProvider(int[] rawSamples)
+    
+    public RawDataProvider(int[] rawSamples, int sampleRate, int channels)
     {
         _intArray = rawSamples ?? throw new ArgumentNullException(nameof(rawSamples));
         _sampleFormat = SampleFormat.S32;
+        SampleRate = sampleRate;
     }
-
-    /// <summary>
-    ///     Creates a new <see cref="RawDataProvider"/> instance from a raw short array.
-    ///     The sample format for short array sources is always <see cref="SampleFormat.S16"/>.
-    /// </summary>
-    /// <param name="rawSamples">The array containing the raw PCM audio data in signed 16-bit integer format.</param>
-    /// <exception cref="ArgumentNullException">
-    ///     <paramref name="rawSamples"/> cannot be <see langword="null"/>.
-    /// </exception>
-    public RawDataProvider(short[] rawSamples)
+    
+    public RawDataProvider(short[] rawSamples, int sampleRate, int channels)
     {
         _shortData = rawSamples ?? throw new ArgumentNullException(nameof(rawSamples));
         _sampleFormat = SampleFormat.S16;
+        SampleRate = sampleRate;
     }
+    
 
     /// <inheritdoc />
     public int Position => _position;
@@ -112,7 +72,7 @@ public class RawDataProvider : ISoundDataProvider
     public SampleFormat SampleFormat => _sampleFormat;
 
     /// <inheritdoc />
-    public int SampleRate => AudioEngine.Instance.SampleRate;
+    public int SampleRate { get; }
 
     /// <inheritdoc />
     public bool IsDisposed { get; private set; }

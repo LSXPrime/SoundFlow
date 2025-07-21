@@ -1,5 +1,6 @@
-﻿using SoundFlow.Abstracts;
+using SoundFlow.Abstracts;
 using System.Runtime.CompilerServices;
+using SoundFlow.Structs;
 
 namespace SoundFlow.Modifiers;
 
@@ -32,6 +33,8 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
     private const float ModulationDepth = 0.005f; // Modulation depth
     private float[] _modulatedCombTuning;
     private float[] _lfoPhase;
+    
+    private readonly AudioFormat _format;
 
     /// <inheritdoc />
     public override string Name { get; set; } = "Free-verb Algorithmic Reverb";
@@ -67,8 +70,9 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
     /// <summary>
     /// Initializes a new instance of the <see cref="AlgorithmicReverbModifier" /> class.
     /// </summary>
-    public AlgorithmicReverbModifier()
+    public AlgorithmicReverbModifier(AudioFormat format)
     {
+        _format = format;
         _combFilters = [];
         _allPassFilters = [];
         _preDelayBuffers = [];
@@ -131,7 +135,7 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
         set
         {
             _preDelay = Math.Clamp(value, 0f, 100f);
-            _preDelaySamples = (int)(_preDelay * AudioEngine.Instance.SampleRate / 1000f);
+            _preDelaySamples = (int)(_preDelay * _format.SampleRate / 1000f);
         }
     }
 
@@ -162,7 +166,7 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
 
     private void UpdateParameters()
     {
-        var numChannels = AudioEngine.Channels;
+        var numChannels = _format.Channels;
         var structureChanged = false;
 
         // Ensure filter arrays are the correct size
@@ -218,7 +222,7 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
             }
         }
 
-        var maxPreDelaySamples = (int)(AudioEngine.Instance.SampleRate * 0.1f); // Max 100ms
+        var maxPreDelaySamples = (int)(_format.SampleRate * 0.1f); // Max 100ms
         maxPreDelaySamples = Math.Max(1, maxPreDelaySamples); // Ensure at least 1 sample
 
         if (structureChanged || _preDelayBuffers.Length != numChannels || (_preDelayBuffers.Length > 0 && (_preDelayBuffers[0] == null || _preDelayBuffers[0].Length != maxPreDelaySamples)))
@@ -248,14 +252,14 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
         // Update preDelaySamples based on current sample rate if not explicitly set yet
         if (_preDelaySamples == 0 && _preDelay > 0)
         {
-             _preDelaySamples = (int)(_preDelay * AudioEngine.Instance.SampleRate / 1000f);
+             _preDelaySamples = (int)(_preDelay * _format.SampleRate / 1000f);
         }
     }
 
     /// <inheritdoc />
     public override float ProcessSample(float sample, int channel)
     {
-        if (channel < 0 || channel >= AudioEngine.Channels || channel >= _combFilters.Length) // Safety check
+        if (channel < 0 || channel >= _format.Channels || channel >= _combFilters.Length) // Safety check
         {
             // This case should ideally not happen if AudioEngine.Channels is consistent
             // Or could return 'sample' to bypass processing for misconfigured channels
@@ -263,7 +267,7 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
         }
 
         var lfo = MathF.Sin(_lfoPhase[channel]) * ModulationDepth;
-        _lfoPhase[channel] += 2 * MathF.PI * ModulationRate / AudioEngine.Instance.SampleRate;
+        _lfoPhase[channel] += 2 * MathF.PI * ModulationRate / _format.SampleRate;
         if (_lfoPhase[channel] > MathF.PI)
             _lfoPhase[channel] -= 2 * MathF.PI;
 
@@ -310,9 +314,9 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
         var mixedOutput = earlyReflectionsOutput * (1 - _mix) + reverbTailOutput * _mix;
 
         var spread = 0f;
-        if (AudioEngine.Channels > 1)
+        if (_format.Channels > 1)
         {
-            spread = _width * (channel - (AudioEngine.Channels - 1) / 2f) / (AudioEngine.Channels - 1);
+            spread = _width * (channel - (_format.Channels - 1) / 2f) / (_format.Channels - 1);
         }
 
         return sample * (1 - _wet) + mixedOutput * _wet * (1 - spread);

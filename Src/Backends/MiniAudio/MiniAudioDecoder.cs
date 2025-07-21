@@ -25,25 +25,35 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
     ///     Constructs a new decoder from the given stream in one of the supported formats.
     /// </summary>
     /// <param name="stream">A stream to a file or streaming audio source in one of the supported formats.</param>
-    public MiniAudioDecoder(Stream stream)
+    /// <param name="sampleFormat">The format of the audio samples.</param>
+    /// <param name="channels">The number of audio channels.</param>
+    /// <param name="sampleRate">The sample rate of the audio.</param>
+    public MiniAudioDecoder(Stream stream, SampleFormat sampleFormat, int channels, int sampleRate)
     {
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
-        SampleFormat = AudioEngine.Instance.SampleFormat;
+        SampleFormat = sampleFormat;
+        Channels = channels;
+        SampleRate = sampleRate;
 
-        var configPtr = Native.AllocateDecoderConfig(AudioEngine.Instance.SampleFormat, (uint)AudioEngine.Channels,
-            (uint)AudioEngine.Instance.SampleRate);
+        var configPtr = Native.AllocateDecoderConfig(SampleFormat, (uint)Channels, (uint)SampleRate);
 
         _decoder = Native.AllocateDecoder();
-        var result = Native.DecoderInit(_readCallback = ReadCallback, _seekCallbackCallback = SeekCallback, nint.Zero,
-            configPtr, _decoder);
+        var result = Native.DecoderInit(_readCallback = ReadCallback, _seekCallbackCallback = SeekCallback, nint.Zero, configPtr, _decoder);
+        Native.Free(configPtr);
 
         if (result != Result.Success) throw new BackendException("MiniAudio", result, "Unable to initialize decoder.");
 
         result = Native.DecoderGetLengthInPcmFrames(_decoder, out var length);
         if (result != Result.Success) throw new BackendException("MiniAudio", result, "Unable to get decoder length.");
-        Length = (int)length * AudioEngine.Channels;
+        Length = (int)length * Channels;
         _endOfStreamReached = false;
     }
+    
+    /// <inheritdoc />
+    public int Channels { get; }
+    
+    /// <inheritdoc />
+    public int SampleRate { get; }
 
     /// <inheritdoc />
     public bool IsDisposed { get; private set; }
@@ -66,7 +76,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
             if (IsDisposed || _endOfStreamReached)
                 return 0;
 
-            var framesToRead = (uint)(samples.Length / AudioEngine.Channels);
+            var framesToRead = (uint)(samples.Length / Channels);
             if (framesToRead == 0)
             {
                 _endOfStreamReached = true;
@@ -100,7 +110,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
                 ArrayPool<byte>.Shared.Return(buffer);
             }
 
-            return (int)framesRead * AudioEngine.Channels;
+            return (int)framesRead * Channels;
         }
     }
 
@@ -123,7 +133,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
 
     private void ConvertToFloat(Span<float> samples, ulong framesRead, Span<byte> nativeBuffer)
     {
-        var sampleCount = checked((int)framesRead * AudioEngine.Channels);
+        var sampleCount = checked((int)framesRead * Channels);
         switch (SampleFormat)
         {
             case SampleFormat.S16:
@@ -164,11 +174,11 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
             {
                 result = Native.DecoderGetLengthInPcmFrames(_decoder, out var length);
                 if (result != Result.Success || (int)length == 0) return false;
-                Length = (int)length * AudioEngine.Channels;
+                Length = (int)length * Channels;
             }
 
             _endOfStreamReached = false;
-            result = Native.DecoderSeekToPcmFrame(_decoder, (ulong)(offset / AudioEngine.Channels));
+            result = Native.DecoderSeekToPcmFrame(_decoder, (ulong)(offset / Channels));
             return result == Result.Success;
         }
     }

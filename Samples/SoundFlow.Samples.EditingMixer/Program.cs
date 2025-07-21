@@ -29,31 +29,31 @@ public static class DemoAudio
 
     public static RawDataProvider GenerateShortBeep(TimeSpan duration = default)
     {
-        if (duration == default) duration = TimeSpan.FromMilliseconds(500);
+        if (duration == TimeSpan.Zero) duration = TimeSpan.FromMilliseconds(500);
         return GenerateTone(duration, 880); // A5 tone
     }
 
     public static RawDataProvider GenerateLongTone(TimeSpan duration = default)
     {
-        if (duration == default) duration = TimeSpan.FromSeconds(6);
+        if (duration == TimeSpan.Zero) duration = TimeSpan.FromSeconds(6);
         return GenerateTone(duration, 440); // A4 tone
     }
 
     public static RawDataProvider GenerateSpeechFragment(TimeSpan duration = default)
     {
-        if (duration == default) duration = TimeSpan.FromSeconds(5);
+        if (duration == TimeSpan.Zero) duration = TimeSpan.FromSeconds(5);
         return GenerateTone(duration, 220, 0.4f); // Simulating speech with A3
     }
 
     public static RawDataProvider GenerateMusicLoop(TimeSpan duration = default)
     {
-        if (duration == default) duration = TimeSpan.FromSeconds(2);
+        if (duration == TimeSpan.Zero) duration = TimeSpan.FromSeconds(2);
         return GenerateTone(duration, 660, 0.6f); // E5 tone
     }
 
     public static RawDataProvider GenerateFxSound(TimeSpan duration = default)
     {
-        if (duration == default) duration = TimeSpan.FromSeconds(1);
+        if (duration == TimeSpan.Zero) duration = TimeSpan.FromSeconds(1);
         return GenerateTone(duration, 1320, 0.7f); // E6 tone
     }
 

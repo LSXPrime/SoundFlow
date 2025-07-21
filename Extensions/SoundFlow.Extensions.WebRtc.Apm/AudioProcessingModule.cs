@@ -68,7 +68,7 @@ public enum RuntimeSettingType
 /// <summary>
 /// Represents a stream configuration for audio processing
 /// </summary>
-public class StreamConfig : IDisposable
+public sealed class StreamConfig : IDisposable
 {
     private IntPtr _nativeConfig;
 
@@ -79,7 +79,7 @@ public class StreamConfig : IDisposable
     /// <param name="numChannels">Number of channels</param>
     public StreamConfig(int sampleRateHz, int numChannels)
     {
-        _nativeConfig = NativeMethods.webrtc_apm_stream_config_create(sampleRateHz, (UIntPtr)numChannels);
+        _nativeConfig = NativeMethods.StreamConfigCreate(sampleRateHz, (UIntPtr)numChannels);
         if (_nativeConfig == IntPtr.Zero)
             throw new InvalidOperationException("Failed to create stream config");
     }
@@ -87,30 +87,33 @@ public class StreamConfig : IDisposable
     /// <summary>
     /// Sample rate in Hz
     /// </summary>
-    public int SampleRateHz => NativeMethods.webrtc_apm_stream_config_sample_rate_hz(_nativeConfig);
+    public int SampleRateHz => NativeMethods.StreamConfigSetSampleRate(_nativeConfig);
 
     /// <summary>
     /// Number of channels
     /// </summary>
-    public int NumChannels => (int)NativeMethods.webrtc_apm_stream_config_num_channels(_nativeConfig);
+    public int NumChannels => (int)NativeMethods.StreamConfigSetNumChannels(_nativeConfig);
 
     internal IntPtr NativePtr => _nativeConfig;
 
     #region IDisposable Support
 
-    private bool disposedValue = false;
+    private bool _disposedValue;
 
-    protected virtual void Dispose(bool disposing)
+    /// <summary>
+    /// Disposes managed and unmanaged resources
+    /// </summary>
+    private void Dispose(bool disposing)
     {
-        if (!disposedValue)
+        if (!_disposedValue)
         {
             if (_nativeConfig != IntPtr.Zero)
             {
-                NativeMethods.webrtc_apm_stream_config_destroy(_nativeConfig);
+                NativeMethods.StreamConfigDestroy(_nativeConfig);
                 _nativeConfig = IntPtr.Zero;
             }
 
-            disposedValue = true;
+            _disposedValue = true;
         }
     }
 
@@ -119,6 +122,7 @@ public class StreamConfig : IDisposable
         Dispose(false);
     }
 
+    /// <inheritdoc />
     public void Dispose()
     {
         Dispose(true);
@@ -140,7 +144,7 @@ public class ProcessingConfig : IDisposable
     /// </summary>
     public ProcessingConfig()
     {
-        _nativeConfig = NativeMethods.webrtc_apm_processing_config_create();
+        _nativeConfig = NativeMethods.ProcessingConfigCreate();
         if (_nativeConfig == IntPtr.Zero)
             throw new InvalidOperationException("Failed to create processing config");
     }
@@ -152,10 +156,10 @@ public class ProcessingConfig : IDisposable
     {
         get
         {
-            var ptr = NativeMethods.webrtc_apm_processing_config_input_stream(_nativeConfig);
+            var ptr = NativeMethods.ProcessingConfigInputStream(_nativeConfig);
             return new StreamConfig(
-                NativeMethods.webrtc_apm_stream_config_sample_rate_hz(ptr),
-                (int)NativeMethods.webrtc_apm_stream_config_num_channels(ptr));
+                NativeMethods.StreamConfigSetSampleRate(ptr),
+                (int)NativeMethods.StreamConfigSetNumChannels(ptr));
         }
     }
 
@@ -166,10 +170,10 @@ public class ProcessingConfig : IDisposable
     {
         get
         {
-            var ptr = NativeMethods.webrtc_apm_processing_config_output_stream(_nativeConfig);
+            var ptr = NativeMethods.ProcessingConfigOutputStream(_nativeConfig);
             return new StreamConfig(
-                NativeMethods.webrtc_apm_stream_config_sample_rate_hz(ptr),
-                (int)NativeMethods.webrtc_apm_stream_config_num_channels(ptr));
+                NativeMethods.StreamConfigSetSampleRate(ptr),
+                (int)NativeMethods.StreamConfigSetNumChannels(ptr));
         }
     }
 
@@ -180,10 +184,10 @@ public class ProcessingConfig : IDisposable
     {
         get
         {
-            var ptr = NativeMethods.webrtc_apm_processing_config_reverse_input_stream(_nativeConfig);
+            var ptr = NativeMethods.ProcessingConfigReverseInputStream(_nativeConfig);
             return new StreamConfig(
-                NativeMethods.webrtc_apm_stream_config_sample_rate_hz(ptr),
-                (int)NativeMethods.webrtc_apm_stream_config_num_channels(ptr));
+                NativeMethods.StreamConfigSetSampleRate(ptr),
+                (int)NativeMethods.StreamConfigSetNumChannels(ptr));
         }
     }
 
@@ -194,10 +198,10 @@ public class ProcessingConfig : IDisposable
     {
         get
         {
-            var ptr = NativeMethods.webrtc_apm_processing_config_reverse_output_stream(_nativeConfig);
+            var ptr = NativeMethods.ProcessingConfigReverseOutputStream(_nativeConfig);
             return new StreamConfig(
-                NativeMethods.webrtc_apm_stream_config_sample_rate_hz(ptr),
-                (int)NativeMethods.webrtc_apm_stream_config_num_channels(ptr));
+                NativeMethods.StreamConfigSetSampleRate(ptr),
+                (int)NativeMethods.StreamConfigSetNumChannels(ptr));
         }
     }
 
@@ -205,19 +209,22 @@ public class ProcessingConfig : IDisposable
 
     #region IDisposable Support
 
-    private bool disposedValue = false;
+    private bool _disposedValue;
 
+    /// <summary>
+    /// Disposes managed and unmanaged resources
+    /// </summary>
     protected virtual void Dispose(bool disposing)
     {
-        if (!disposedValue)
+        if (!_disposedValue)
         {
             if (_nativeConfig != IntPtr.Zero)
             {
-                NativeMethods.webrtc_apm_processing_config_destroy(_nativeConfig);
+                NativeMethods.ProcessingConfigDestroy(_nativeConfig);
                 _nativeConfig = IntPtr.Zero;
             }
 
-            disposedValue = true;
+            _disposedValue = true;
         }
     }
 
@@ -226,6 +233,7 @@ public class ProcessingConfig : IDisposable
         Dispose(false);
     }
 
+    /// <inheritdoc />
     public void Dispose()
     {
         Dispose(true);
@@ -238,7 +246,7 @@ public class ProcessingConfig : IDisposable
 /// <summary>
 /// Represents an APM configuration
 /// </summary>
-public class ApmConfig : IDisposable
+public sealed class ApmConfig : IDisposable
 {
     private IntPtr _nativeConfig;
 
@@ -247,7 +255,7 @@ public class ApmConfig : IDisposable
     /// </summary>
     public ApmConfig()
     {
-        _nativeConfig = NativeMethods.webrtc_apm_config_create();
+        _nativeConfig = NativeMethods.ConfigCreate();
         if (_nativeConfig == IntPtr.Zero)
             throw new InvalidOperationException("Failed to create APM config");
     }
@@ -259,7 +267,7 @@ public class ApmConfig : IDisposable
     /// <param name="mobileMode">Whether to use mobile mode</param>
     public void SetEchoCanceller(bool enabled, bool mobileMode)
     {
-        NativeMethods.webrtc_apm_config_set_echo_canceller(_nativeConfig, enabled ? 1 : 0, mobileMode ? 1 : 0);
+        NativeMethods.ConfigSetEchoCanceller(_nativeConfig, enabled ? 1 : 0, mobileMode ? 1 : 0);
     }
 
     /// <summary>
@@ -269,7 +277,7 @@ public class ApmConfig : IDisposable
     /// <param name="level">Noise suppression level</param>
     public void SetNoiseSuppression(bool enabled, NoiseSuppressionLevel level)
     {
-        NativeMethods.webrtc_apm_config_set_noise_suppression(_nativeConfig, enabled ? 1 : 0, level);
+        NativeMethods.ConfigSetNoiseSuppression(_nativeConfig, enabled ? 1 : 0, level);
     }
 
     /// <summary>
@@ -283,7 +291,7 @@ public class ApmConfig : IDisposable
     public void SetGainController1(bool enabled, GainControlMode mode, int targetLevelDbfs, int compressionGainDb,
         bool enableLimiter)
     {
-        NativeMethods.webrtc_apm_config_set_gain_controller1(
+        NativeMethods.ConfigSetGainController1(
             _nativeConfig,
             enabled ? 1 : 0,
             mode,
@@ -298,7 +306,7 @@ public class ApmConfig : IDisposable
     /// <param name="enabled">Whether gain controller 2 is enabled</param>
     public void SetGainController2(bool enabled)
     {
-        NativeMethods.webrtc_apm_config_set_gain_controller2(_nativeConfig, enabled ? 1 : 0);
+        NativeMethods.ConfigSetGainController2(_nativeConfig, enabled ? 1 : 0);
     }
 
     /// <summary>
@@ -307,7 +315,7 @@ public class ApmConfig : IDisposable
     /// <param name="enabled">Whether the high pass filter is enabled</param>
     public void SetHighPassFilter(bool enabled)
     {
-        NativeMethods.webrtc_apm_config_set_high_pass_filter(_nativeConfig, enabled ? 1 : 0);
+        NativeMethods.ConfigSetHighPassFilter(_nativeConfig, enabled ? 1 : 0);
     }
 
     /// <summary>
@@ -324,13 +332,13 @@ public class ApmConfig : IDisposable
     /// Configures the processing pipeline
     /// </summary>
     /// <param name="maxInternalRate">Maximum internal processing rate</param>
-    /// <param name="multiChannelRender">Whether to enable multi-channel render</param>
-    /// <param name="multiChannelCapture">Whether to enable multi-channel capture</param>
+    /// <param name="multiChannelRender">Whether to enable multichannel render</param>
+    /// <param name="multiChannelCapture">Whether to enable multichannel capture</param>
     /// <param name="downmixMethod">Downmix method</param>
     public void SetPipeline(int maxInternalRate, bool multiChannelRender, bool multiChannelCapture,
         DownmixMethod downmixMethod)
     {
-        NativeMethods.webrtc_apm_config_set_pipeline(
+        NativeMethods.ConfigSetPipeline(
             _nativeConfig,
             maxInternalRate,
             multiChannelRender ? 1 : 0,
@@ -342,19 +350,22 @@ public class ApmConfig : IDisposable
 
     #region IDisposable Support
 
-    private bool disposedValue = false;
+    private bool _disposedValue;
 
-    protected virtual void Dispose(bool disposing)
+    /// <summary>
+    /// Disposes managed and unmanaged resources
+    /// </summary>
+    private void Dispose(bool disposing)
     {
-        if (!disposedValue)
+        if (!_disposedValue)
         {
             if (_nativeConfig != IntPtr.Zero)
             {
-                NativeMethods.webrtc_apm_config_destroy(_nativeConfig);
+                NativeMethods.ConfigDestroy(_nativeConfig);
                 _nativeConfig = IntPtr.Zero;
             }
 
-            disposedValue = true;
+            _disposedValue = true;
         }
     }
 
@@ -363,6 +374,7 @@ public class ApmConfig : IDisposable
         Dispose(false);
     }
 
+    /// <inheritdoc />
     public void Dispose()
     {
         Dispose(true);
@@ -375,8 +387,11 @@ public class ApmConfig : IDisposable
 /// <summary>
 /// Provides access to the WebRTC Audio Processing Module
 /// </summary>
-public class AudioProcessingModule : IDisposable
+public sealed class AudioProcessingModule : IDisposable
 {
+    /// <summary>
+    /// The native APM instance
+    /// </summary>
     public IntPtr NativePtr;
 
     /// <summary>
@@ -384,7 +399,7 @@ public class AudioProcessingModule : IDisposable
     /// </summary>
     public AudioProcessingModule()
     {
-        NativePtr = NativeMethods.webrtc_apm_create();
+        NativePtr = NativeMethods.Create();
         if (NativePtr == IntPtr.Zero)
             throw new InvalidOperationException("Failed to create APM instance");
     }
@@ -396,10 +411,9 @@ public class AudioProcessingModule : IDisposable
     /// <returns>Error code</returns>
     public ApmError ApplyConfig(ApmConfig config)
     {
-        if (config == null)
-            throw new ArgumentNullException(nameof(config));
+        ArgumentNullException.ThrowIfNull(config);
 
-        return NativeMethods.webrtc_apm_apply_config(NativePtr, config.NativePtr);
+        return NativeMethods.ConfigApply(NativePtr, config.NativePtr);
     }
 
     /// <summary>
@@ -408,7 +422,7 @@ public class AudioProcessingModule : IDisposable
     /// <returns>Error code</returns>
     public ApmError Initialize()
     {
-        return NativeMethods.webrtc_apm_initialize(NativePtr);
+        return NativeMethods.Initialize(NativePtr);
     }
     
     /// <summary>
@@ -447,7 +461,7 @@ public class AudioProcessingModule : IDisposable
 
             try
             {
-                var error = NativeMethods.webrtc_apm_process_stream(
+                var error = NativeMethods.ProcessStream(
                     NativePtr,
                     srcHandle.AddrOfPinnedObject(),
                     inputConfig.NativePtr,
@@ -471,13 +485,13 @@ public class AudioProcessingModule : IDisposable
         finally
         {
             // Free allocated memory
-            for (int i = 0; i < srcPtrs.Length; i++)
+            for (var i = 0; i < srcPtrs.Length; i++)
             {
                 if (srcPtrs[i] != IntPtr.Zero)
                     Marshal.FreeHGlobal(srcPtrs[i]);
             }
 
-            for (int i = 0; i < destPtrs.Length; i++)
+            for (var i = 0; i < destPtrs.Length; i++)
             {
                 if (destPtrs[i] != IntPtr.Zero)
                     Marshal.FreeHGlobal(destPtrs[i]);
@@ -522,7 +536,7 @@ public class AudioProcessingModule : IDisposable
 
             try
             {
-                var error = NativeMethods.webrtc_apm_process_reverse_stream(
+                var error = NativeMethods.ProcessReverseStream(
                     NativePtr,
                     srcHandle.AddrOfPinnedObject(),
                     inputConfig.NativePtr,
@@ -576,18 +590,18 @@ public class AudioProcessingModule : IDisposable
 
         try
         {
-            for (int i = 0; i < data.Length; i++)
+            for (var i = 0; i < data.Length; i++)
             {
                 dataPtrs[i] = Marshal.AllocHGlobal(data[i].Length * sizeof(float));
                 Marshal.Copy(data[i], 0, dataPtrs[i], data[i].Length);
             }
 
             // Pin the array
-            GCHandle dataHandle = GCHandle.Alloc(dataPtrs, GCHandleType.Pinned);
+            var dataHandle = GCHandle.Alloc(dataPtrs, GCHandleType.Pinned);
 
             try
             {
-                return NativeMethods.webrtc_apm_analyze_reverse_stream(
+                return NativeMethods.AnalyzeReverseStream(
                     NativePtr,
                     dataHandle.AddrOfPinnedObject(),
                     reverseConfig.NativePtr);
@@ -614,7 +628,7 @@ public class AudioProcessingModule : IDisposable
     /// <param name="level">Analog level (0-255)</param>
     public void SetStreamAnalogLevel(int level)
     {
-        NativeMethods.webrtc_apm_set_stream_analog_level(NativePtr, level);
+        NativeMethods.SetStreamAnalogLevel(NativePtr, level);
     }
 
     /// <summary>
@@ -623,7 +637,7 @@ public class AudioProcessingModule : IDisposable
     /// <returns>Recommended analog level (0-255)</returns>
     public int GetRecommendedStreamAnalogLevel()
     {
-        return NativeMethods.webrtc_apm_recommended_stream_analog_level(NativePtr);
+        return NativeMethods.GetRecommendedStreamAnalogLevel(NativePtr);
     }
 
     /// <summary>
@@ -632,7 +646,7 @@ public class AudioProcessingModule : IDisposable
     /// <param name="delayMs">Delay in milliseconds</param>
     public void SetStreamDelayMs(int delayMs)
     {
-        NativeMethods.webrtc_apm_set_stream_delay_ms(NativePtr, delayMs);
+        NativeMethods.SetStreamDelayMs(NativePtr, delayMs);
     }
 
     /// <summary>
@@ -641,25 +655,7 @@ public class AudioProcessingModule : IDisposable
     /// <returns>Current delay in milliseconds</returns>
     public int GetStreamDelayMs()
     {
-        return NativeMethods.webrtc_apm_stream_delay_ms(NativePtr);
-    }
-
-    /// <summary>
-    /// Sets whether a key was pressed during this chunk of audio
-    /// </summary>
-    /// <param name="keyPressed">Whether a key was pressed</param>
-    public void SetStreamKeyPressed(bool keyPressed)
-    {
-        NativeMethods.webrtc_apm_set_stream_key_pressed(NativePtr, keyPressed ? 1 : 0);
-    }
-
-    /// <summary>
-    /// Sets whether the output will be muted or in some other way not used
-    /// </summary>
-    /// <param name="muted">Whether output will be muted</param>
-    public void SetOutputWillBeMuted(bool muted)
-    {
-        NativeMethods.webrtc_apm_set_output_will_be_muted(NativePtr, muted ? 1 : 0);
+        return NativeMethods.GetStreamDelayMs(NativePtr);
     }
 
     /// <summary>
@@ -669,7 +665,7 @@ public class AudioProcessingModule : IDisposable
     /// <param name="value">Float value</param>
     public void SetRuntimeSetting(RuntimeSettingType type, float value)
     {
-        NativeMethods.webrtc_apm_set_runtime_setting_float(NativePtr, type, value);
+        NativeMethods.SetRuntimeSettingFloat(NativePtr, type, value);
     }
 
     /// <summary>
@@ -679,7 +675,7 @@ public class AudioProcessingModule : IDisposable
     /// <param name="value">Integer value</param>
     public void SetRuntimeSetting(RuntimeSettingType type, int value)
     {
-        NativeMethods.webrtc_apm_set_runtime_setting_int(NativePtr, type, value);
+        NativeMethods.SetRuntimeSettingInt(NativePtr, type, value);
     }
 
     /// <summary>
@@ -688,7 +684,7 @@ public class AudioProcessingModule : IDisposable
     /// <returns>Sample rate in Hz</returns>
     public int GetProcSampleRateHz()
     {
-        return NativeMethods.webrtc_apm_proc_sample_rate_hz(NativePtr);
+        return NativeMethods.GetProcSampleRateHz(NativePtr);
     }
 
     /// <summary>
@@ -697,7 +693,7 @@ public class AudioProcessingModule : IDisposable
     /// <returns>Split sample rate in Hz</returns>
     public int GetProcSplitSampleRateHz()
     {
-        return NativeMethods.webrtc_apm_proc_split_sample_rate_hz(NativePtr);
+        return NativeMethods.GetProcSplitSampleRateHz(NativePtr);
     }
 
     /// <summary>
@@ -706,7 +702,7 @@ public class AudioProcessingModule : IDisposable
     /// <returns>Number of input channels</returns>
     public int GetNumInputChannels()
     {
-        return (int)NativeMethods.webrtc_apm_num_input_channels(NativePtr);
+        return (int)NativeMethods.GetInputChannelsNum(NativePtr);
     }
 
     /// <summary>
@@ -715,7 +711,7 @@ public class AudioProcessingModule : IDisposable
     /// <returns>Number of processing channels</returns>
     public int GetNumProcChannels()
     {
-        return (int)NativeMethods.webrtc_apm_num_proc_channels(NativePtr);
+        return (int)NativeMethods.GetProcChannelsNum(NativePtr);
     }
 
     /// <summary>
@@ -724,7 +720,7 @@ public class AudioProcessingModule : IDisposable
     /// <returns>Number of output channels</returns>
     public int GetNumOutputChannels()
     {
-        return (int)NativeMethods.webrtc_apm_num_output_channels(NativePtr);
+        return (int)NativeMethods.GetOutputChannelsNum(NativePtr);
     }
 
     /// <summary>
@@ -733,26 +729,7 @@ public class AudioProcessingModule : IDisposable
     /// <returns>Number of reverse channels</returns>
     public int GetNumReverseChannels()
     {
-        return (int)NativeMethods.webrtc_apm_num_reverse_channels(NativePtr);
-    }
-
-    /// <summary>
-    /// Creates an AEC dump file
-    /// </summary>
-    /// <param name="fileName">Path to the dump file</param>
-    /// <param name="maxLogSizeBytes">Maximum size of the log file in bytes (-1 for unlimited)</param>
-    /// <returns>True if successful</returns>
-    public bool CreateAecDump(string fileName, long maxLogSizeBytes)
-    {
-        return NativeMethods.webrtc_apm_create_aec_dump(NativePtr, fileName, maxLogSizeBytes) != 0;
-    }
-
-    /// <summary>
-    /// Detaches the current AEC dump
-    /// </summary>
-    public void DetachAecDump()
-    {
-        NativeMethods.webrtc_apm_detach_aec_dump(NativePtr);
+        return (int)NativeMethods.GetReverseChannelsNum(NativePtr);
     }
 
     /// <summary>
@@ -762,24 +739,24 @@ public class AudioProcessingModule : IDisposable
     /// <returns>Frame size in samples</returns>
     public static int GetFrameSize(int sampleRateHz)
     {
-        return (int)NativeMethods.webrtc_apm_get_frame_size(sampleRateHz);
+        return (int)NativeMethods.GetFrameSize(sampleRateHz);
     }
 
     #region IDisposable Support
 
-    private bool disposedValue = false;
+    private bool _disposedValue;
 
-    protected virtual void Dispose(bool disposing)
+    private void Dispose(bool disposing)
     {
-        if (!disposedValue)
+        if (!_disposedValue)
         {
             if (NativePtr != IntPtr.Zero)
             {
-                NativeMethods.webrtc_apm_destroy(NativePtr);
+                NativeMethods.Destroy(NativePtr);
                 NativePtr = IntPtr.Zero;
             }
 
-            disposedValue = true;
+            _disposedValue = true;
         }
     }
 
@@ -788,6 +765,7 @@ public class AudioProcessingModule : IDisposable
         Dispose(false);
     }
 
+    /// <inheritdoc />
     public void Dispose()
     {
         Dispose(true);
@@ -797,6 +775,9 @@ public class AudioProcessingModule : IDisposable
     #endregion
 }
 
+/// <summary>
+/// Native methods
+/// </summary>
 public static partial class NativeMethods
 {
     private const string LibraryName = "webrtc-apm";
@@ -915,142 +896,129 @@ public static partial class NativeMethods
 
 #pragma warning disable CS1591
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_create")]
-    public static partial IntPtr webrtc_apm_create();
+    internal static partial IntPtr Create();
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_destroy")]
-    public static partial void webrtc_apm_destroy(IntPtr apm);
+    public static partial void Destroy(IntPtr apm);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_config_create")]
-    public static partial IntPtr webrtc_apm_config_create();
+    public static partial IntPtr ConfigCreate();
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_config_destroy")]
-    public static partial void webrtc_apm_config_destroy(IntPtr config);
+    public static partial void ConfigDestroy(IntPtr config);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_config_set_echo_canceller")]
-    public static partial void webrtc_apm_config_set_echo_canceller(IntPtr config, int enabled, int mobile_mode);
+    public static partial void ConfigSetEchoCanceller(IntPtr config, int enabled, int mobileMode);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_config_set_noise_suppression")]
-    public static partial void webrtc_apm_config_set_noise_suppression(IntPtr config, int enabled,
+    public static partial void ConfigSetNoiseSuppression(IntPtr config, int enabled,
         NoiseSuppressionLevel level);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_config_set_gain_controller1")]
-    public static partial void webrtc_apm_config_set_gain_controller1(IntPtr config, int enabled, GainControlMode mode,
-        int target_level_dbfs, int compression_gain_db, int enable_limiter);
+    public static partial void ConfigSetGainController1(IntPtr config, int enabled, GainControlMode mode,
+        int targetLevelDbfs, int compressionGainDb, int enableLimiter);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_config_set_gain_controller2")]
-    public static partial void webrtc_apm_config_set_gain_controller2(IntPtr config, int enabled);
+    public static partial void ConfigSetGainController2(IntPtr config, int enabled);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_config_set_high_pass_filter")]
-    public static partial void webrtc_apm_config_set_high_pass_filter(IntPtr config, int enabled);
+    public static partial void ConfigSetHighPassFilter(IntPtr config, int enabled);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_config_set_pre_amplifier")]
-    public static partial void webrtc_apm_config_set_pre_amplifier(IntPtr config, int enabled, float fixed_gain_factor);
+    public static partial void webrtc_apm_config_set_pre_amplifier(IntPtr config, int enabled, float fixedGainFactor);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_config_set_pipeline")]
-    public static partial void webrtc_apm_config_set_pipeline(IntPtr config, int max_internal_rate,
-        int multi_channel_render, int multi_channel_capture, DownmixMethod downmix_method);
+    public static partial void ConfigSetPipeline(IntPtr config, int maxInternalRate,
+        int multiChannelRender, int multiChannelCapture, DownmixMethod downmixMethod);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_apply_config")]
-    public static partial ApmError webrtc_apm_apply_config(IntPtr apm, IntPtr config);
+    public static partial ApmError ConfigApply(IntPtr apm, IntPtr config);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_stream_config_create")]
-    public static partial IntPtr webrtc_apm_stream_config_create(int sample_rate_hz, UIntPtr num_channels);
+    public static partial IntPtr StreamConfigCreate(int sampleRateHz, UIntPtr numChannels);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_stream_config_destroy")]
-    public static partial void webrtc_apm_stream_config_destroy(IntPtr config);
+    public static partial void StreamConfigDestroy(IntPtr config);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_stream_config_sample_rate_hz")]
-    public static partial int webrtc_apm_stream_config_sample_rate_hz(IntPtr config);
+    public static partial int StreamConfigSetSampleRate(IntPtr config);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_stream_config_num_channels")]
-    public static partial UIntPtr webrtc_apm_stream_config_num_channels(IntPtr config);
+    public static partial UIntPtr StreamConfigSetNumChannels(IntPtr config);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_processing_config_create")]
-    public static partial IntPtr webrtc_apm_processing_config_create();
+    public static partial IntPtr ProcessingConfigCreate();
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_processing_config_destroy")]
-    public static partial void webrtc_apm_processing_config_destroy(IntPtr config);
+    public static partial void ProcessingConfigDestroy(IntPtr config);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_processing_config_input_stream")]
-    public static partial IntPtr webrtc_apm_processing_config_input_stream(IntPtr config);
+    public static partial IntPtr ProcessingConfigInputStream(IntPtr config);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_processing_config_output_stream")]
-    public static partial IntPtr webrtc_apm_processing_config_output_stream(IntPtr config);
+    public static partial IntPtr ProcessingConfigOutputStream(IntPtr config);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_processing_config_reverse_input_stream")]
-    public static partial IntPtr webrtc_apm_processing_config_reverse_input_stream(IntPtr config);
+    public static partial IntPtr ProcessingConfigReverseInputStream(IntPtr config);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_processing_config_reverse_output_stream")]
-    public static partial IntPtr webrtc_apm_processing_config_reverse_output_stream(IntPtr config);
+    public static partial IntPtr ProcessingConfigReverseOutputStream(IntPtr config);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_initialize")]
-    public static partial ApmError webrtc_apm_initialize(IntPtr apm);
+    public static partial ApmError Initialize(IntPtr apm);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_initialize_with_config")]
-    public static partial ApmError webrtc_apm_initialize_with_config(IntPtr apm, IntPtr config);
+    public static partial ApmError InitializeWithConfig(IntPtr apm, IntPtr config);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_process_stream")]
-    public static partial ApmError webrtc_apm_process_stream(IntPtr apm, IntPtr src, IntPtr input_config,
-        IntPtr output_config, IntPtr dest);
+    public static partial ApmError ProcessStream(IntPtr apm, IntPtr src, IntPtr inputConfig,
+        IntPtr outputConfig, IntPtr dest);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_process_reverse_stream")]
-    public static partial ApmError webrtc_apm_process_reverse_stream(IntPtr apm, IntPtr src, IntPtr input_config,
-        IntPtr output_config, IntPtr dest);
+    public static partial ApmError ProcessReverseStream(IntPtr apm, IntPtr src, IntPtr inputConfig,
+        IntPtr outputConfig, IntPtr dest);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_analyze_reverse_stream")]
-    public static partial ApmError webrtc_apm_analyze_reverse_stream(IntPtr apm, IntPtr data, IntPtr reverse_config);
+    public static partial ApmError AnalyzeReverseStream(IntPtr apm, IntPtr data, IntPtr reverseConfig);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_set_stream_analog_level")]
-    public static partial void webrtc_apm_set_stream_analog_level(IntPtr apm, int level);
+    public static partial void SetStreamAnalogLevel(IntPtr apm, int level);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_recommended_stream_analog_level")]
-    public static partial int webrtc_apm_recommended_stream_analog_level(IntPtr apm);
+    public static partial int GetRecommendedStreamAnalogLevel(IntPtr apm);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_set_stream_delay_ms")]
-    public static partial void webrtc_apm_set_stream_delay_ms(IntPtr apm, int delay);
+    public static partial void SetStreamDelayMs(IntPtr apm, int delay);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_stream_delay_ms")]
-    public static partial int webrtc_apm_stream_delay_ms(IntPtr apm);
-
-    [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_set_stream_key_pressed")]
-    public static partial void webrtc_apm_set_stream_key_pressed(IntPtr apm, int key_pressed);
-
-    [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_set_output_will_be_muted")]
-    public static partial void webrtc_apm_set_output_will_be_muted(IntPtr apm, int muted);
+    public static partial int GetStreamDelayMs(IntPtr apm);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_set_runtime_setting_float")]
-    public static partial void webrtc_apm_set_runtime_setting_float(IntPtr apm, RuntimeSettingType type, float value);
+    public static partial void SetRuntimeSettingFloat(IntPtr apm, RuntimeSettingType type, float value);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_set_runtime_setting_int")]
-    public static partial void webrtc_apm_set_runtime_setting_int(IntPtr apm, RuntimeSettingType type, int value);
+    public static partial void SetRuntimeSettingInt(IntPtr apm, RuntimeSettingType type, int value);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_proc_sample_rate_hz")]
-    public static partial int webrtc_apm_proc_sample_rate_hz(IntPtr apm);
+    public static partial int GetProcSampleRateHz(IntPtr apm);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_proc_split_sample_rate_hz")]
-    public static partial int webrtc_apm_proc_split_sample_rate_hz(IntPtr apm);
+    public static partial int GetProcSplitSampleRateHz(IntPtr apm);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_num_input_channels")]
-    public static partial UIntPtr webrtc_apm_num_input_channels(IntPtr apm);
+    public static partial UIntPtr GetInputChannelsNum(IntPtr apm);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_num_proc_channels")]
-    public static partial UIntPtr webrtc_apm_num_proc_channels(IntPtr apm);
+    public static partial UIntPtr GetProcChannelsNum(IntPtr apm);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_num_output_channels")]
-    public static partial UIntPtr webrtc_apm_num_output_channels(IntPtr apm);
+    public static partial UIntPtr GetOutputChannelsNum(IntPtr apm);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_num_reverse_channels")]
-    public static partial UIntPtr webrtc_apm_num_reverse_channels(IntPtr apm);
-
-    [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_create_aec_dump")]
-    public static partial int webrtc_apm_create_aec_dump(IntPtr apm, [MarshalAs(UnmanagedType.LPStr)] string file_name,
-        long max_log_size_bytes);
-
-    [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_detach_aec_dump")]
-    public static partial void webrtc_apm_detach_aec_dump(IntPtr apm);
+    public static partial UIntPtr GetReverseChannelsNum(IntPtr apm);
 
     [LibraryImport(LibraryName, EntryPoint = "webrtc_apm_get_frame_size")]
-    public static partial UIntPtr webrtc_apm_get_frame_size(int sample_rate_hz);
+    public static partial UIntPtr GetFrameSize(int sampleRateHz);
     
     #pragma warning restore CS1591
 }

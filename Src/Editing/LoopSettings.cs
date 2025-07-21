@@ -1,4 +1,4 @@
-﻿namespace SoundFlow.Editing;
+namespace SoundFlow.Editing;
 
 /// <summary>
 /// Defines the looping behavior for an <see cref="AudioSegment"/>.

@@ -1,4 +1,5 @@
 ﻿using SoundFlow.Abstracts;
+using SoundFlow.Structs;
 
 namespace SoundFlow.Modifiers;
 
@@ -10,6 +11,7 @@ public sealed class DelayModifier : SoundModifier
     private readonly List<float[]> _delayLines;
     private readonly int[] _delayIndices;
     private readonly float[] _filterStates;
+    private readonly AudioFormat _format;
 
     /// <summary>
     /// The feedback amount (0.0 - 1.0).
@@ -29,22 +31,24 @@ public sealed class DelayModifier : SoundModifier
     /// <summary>
     /// Constructs a new instance of <see cref="DelayModifier"/>.
     /// </summary>
+    /// <param name="format">The audio format to process.</param>
     /// <param name="delaySamples">The length of the delay line in samples.</param>
     /// <param name="feedback">The feedback amount (0.0 - 1.0).</param>
     /// <param name="wetMix">The wet/dry mix (0.0 - 1.0).</param>
     /// <param name="cutoff">The cutoff frequency in Hertz.</param>
-    public DelayModifier(int delaySamples = 44100, float feedback = 0.5f, 
+    public DelayModifier(AudioFormat format, int delaySamples = 48000, float feedback = 0.5f, 
         float wetMix = 0.3f, float cutoff = 5000f)
     {
+        _format = format;
         Feedback = feedback;
         WetMix = wetMix;
         Cutoff = cutoff;
 
         _delayLines = [];
-        _delayIndices = new int[AudioEngine.Channels];
-        _filterStates = new float[AudioEngine.Channels];
+        _delayIndices = new int[_format.Channels];
+        _filterStates = new float[_format.Channels];
         
-        for(var i = 0; i < AudioEngine.Channels; i++)
+        for(var i = 0; i < _format.Channels; i++)
         {
             _delayLines.Add(new float[delaySamples]);
         }
@@ -61,7 +65,7 @@ public sealed class DelayModifier : SoundModifier
         
         // Apply low-pass filter to feedback
         var rc = 1f / (2 * MathF.PI * Cutoff);
-        var alpha = AudioEngine.Instance.InverseSampleRate / (rc + AudioEngine.Instance.InverseSampleRate);
+        var alpha = _format.InverseSampleRate / (rc + _format.InverseSampleRate);
         delayed = alpha * delayed + (1 - alpha) * _filterStates[channel];
         _filterStates[channel] = delayed;
         

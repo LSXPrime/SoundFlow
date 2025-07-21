@@ -10,8 +10,8 @@ set(LIBRARY_NAME "miniaudio")
 
 # Building Shared Library
 add_library(${LIBRARY_NAME} SHARED
-    library.cpp
-    library.h
+        library.cpp
+        library.h
     Submodules/miniaudio/miniaudio.h)
 
 # Platform-specific configurations

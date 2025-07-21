@@ -285,19 +285,19 @@ jobs:
         if: matrix.platform == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake gcc g++
+          sudo apt-get install -y cmake gcc g++ file binutils
 
       - name: Install Dependencies (Android)
         if: matrix.platform == 'Android'
         uses: android-actions/setup-android@v2
-        
+
       - name: Install Cross-Compilation tools (Linux)
         if: matrix.platform == 'Linux' && (matrix.arch == 'armv7l' || matrix.arch == 'aarch64')
         run: |
           sudo apt-get update
           sudo apt-get install -y qemu-user-static
           if [ "${{ matrix.arch }}" == "armv7l" ]; then
-            sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+            sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf binutils-arm-linux-gnueabihf
           elif [ "${{ matrix.arch }}" == "aarch64" ]; then
             sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
           fi
@@ -389,44 +389,70 @@ jobs:
           fi
 
       # Dependency analysis
-      - name: Analyze Dependencies (Windows)
+      - name: Analyze Dependencies and Exports (Windows)
         if: matrix.platform == 'Windows'
         shell: powershell
         run: |
-          Write-Host "Dependencies for Windows:"
-          & "$env:DUMPBIN_PATH\dumpbin.exe" /DEPENDENTS "runtimes/${{ matrix.rid }}/native/miniaudio.dll"
+          $libPath = "runtimes/${{ matrix.rid }}/native/miniaudio.dll"
+          Write-Host "--- Dependencies for $libPath ---"
+          & "$env:DUMPBIN_PATH\dumpbin.exe" /DEPENDENTS "$libPath"
+          Write-Host "--- Exports for $libPath ---"
+          & "$env:DUMPBIN_PATH\dumpbin.exe" /EXPORTS "$libPath"
 
-      - name: Analyze Dependencies (iOS)
+      - name: Analyze Dependencies and Exports (iOS)
         if: matrix.platform == 'iOS'
         shell: bash
         run: |
-          FRAMEWORK_BINARY="runtimes/${{ matrix.rid }}/native/miniaudio.framework/miniaudio"
-          echo "Dependencies for iOS:"
-          otool -L "$FRAMEWORK_BINARY"
+          LIB_PATH="runtimes/${{ matrix.rid }}/native/miniaudio.framework/miniaudio"
+          echo "--- Dependencies for iOS ---"
+          otool -L "$LIB_PATH"
+          echo "--- Symbols ---"
+          nm -g "$LIB_PATH" | grep " T "
 
-      - name: Analyze Dependencies (Android)
+      - name: Analyze Dependencies and Exports (Android)
         if: matrix.platform == 'Android'
         shell: bash
         run: |
           LIB_PATH="runtimes/${{ matrix.rid }}/native/libminiaudio.so"
-          echo "Dependencies for Android:"
+          echo "--- Dependencies for Android ---"
           readelf -d "$LIB_PATH"
+          echo "--- Symbols ---"
+          nm -g "$LIB_PATH" | grep " T "
 
-      - name: Analyze Dependencies (Linux)
+      - name: Analyze Dependencies and Exports (Linux)
         if: matrix.platform == 'Linux'
         shell: bash
         run: |
           LIB_PATH="runtimes/${{ matrix.rid }}/native/libminiaudio.so"
-          echo "Dependencies for Linux (${{ matrix.arch }}):"
-          readelf -d "$LIB_PATH" || echo "Analysis failed - binary may be invalid"
+          echo "=== Library Information ==="
+          file "$LIB_PATH"
 
-      - name: Analyze Dependencies (macOS)
+          echo -e "\n=== Dependencies ==="
+          if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
+            ldd "$LIB_PATH" || true
+          else
+            readelf -d "$LIB_PATH" | grep "NEEDED" || true
+          fi
+
+          echo -e "\n=== Symbols ==="
+          if [[ "${{ matrix.arch }}" == "x86_64" || "${{ matrix.arch }}" == "aarch64" ]]; then
+            nm -g "$LIB_PATH" | grep " T " || true
+          else
+            arm-linux-gnueabihf-nm -g "$LIB_PATH" | grep " T " || true
+          fi
+
+          echo -e "\n=== SONAME ==="
+          readelf -d "$LIB_PATH" | grep "SONAME" || true
+
+      - name: Analyze Dependencies and Exports (macOS)
         if: matrix.platform == 'macOS'
         shell: bash
         run: |
           LIB_PATH="runtimes/${{ matrix.rid }}/native/libminiaudio.dylib"
-          echo "Dependencies for macOS:"
+          echo "--- Dependencies for macOS ---"
           otool -L "$LIB_PATH"
+          echo "--- Symbols ---"
+          nm -g "$LIB_PATH" | grep " T "
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

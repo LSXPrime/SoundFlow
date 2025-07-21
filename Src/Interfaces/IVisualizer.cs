@@ -1,4 +1,3 @@
-﻿
 namespace SoundFlow.Interfaces;
 
 /// <summary>

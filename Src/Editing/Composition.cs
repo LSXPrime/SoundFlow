@@ -1,8 +1,9 @@
-﻿using System.Buffers;
+using System.Buffers;
 using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using SoundFlow.Providers;
+using SoundFlow.Structs;
 
 namespace SoundFlow.Editing;
 
@@ -20,6 +21,11 @@ public class Composition : ISoundDataProvider
     private int _targetChannels;
     private int _currentReadPositionSamples;
     private bool _isDirty;
+    
+    /// <summary>
+    /// Gets the audio format of the composition.
+    /// </summary>
+    public AudioFormat Format { get; }
 
     /// <summary>
     /// Gets or sets the name of the composition.
@@ -110,15 +116,17 @@ public class Composition : ISoundDataProvider
     /// <summary>
     /// Initializes a new instance of the <see cref="Composition"/> class.
     /// </summary>
+    /// <param name="format">The audio format of the composition. Cannot be null.</param>
     /// <param name="name">The name of the composition. Defaults to "Composition".</param>
-    /// <param name="targetChannels">Optional target number of channels for the composition's output. If null, uses <see cref="AudioEngine.Channels"/>.</param>
+    /// <param name="targetChannels">Optional target number of channels for the composition's output. If null, uses the engine's default.</param>
     /// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="targetChannels"/> is less than or equal to 0.</exception>
-    public Composition(string name = "Composition", int? targetChannels = null)
+    public Composition(AudioFormat format, string name = "Composition", int? targetChannels = null)
     {
+        Format = format;
         _name = name;
-        _sampleRate = AudioEngine.Instance.SampleRate;
-        if (targetChannels <= 0) throw new ArgumentOutOfRangeException(nameof(targetChannels), "Channels must be greater than 0.");
-        _targetChannels = targetChannels ?? AudioEngine.Channels;
+        _sampleRate = format.SampleRate;
+        if (targetChannels is <= 0) throw new ArgumentOutOfRangeException(nameof(targetChannels), "Channels must be greater than 0.");
+        _targetChannels = targetChannels ?? format.Channels;
     }
 
     /// <summary>
@@ -224,14 +232,14 @@ public class Composition : ISoundDataProvider
         {
             if (modifier.Enabled)
             {
-                modifier.Process(outputBuffer[..samplesToRender]);
+                modifier.Process(outputBuffer[..samplesToRender], TargetChannels);
             }
         }
 
         // Process Composition (Master) Analyzers
         foreach (var analyzer in Analyzers)
         {
-            analyzer.Process(outputBuffer[..samplesToRender]);
+            analyzer.Process(outputBuffer[..samplesToRender], TargetChannels);
         }
 
         // Apply master volume and clipping to the final mixed output
@@ -421,6 +429,7 @@ public class Composition : ISoundDataProvider
         // Create a RawDataProvider with silence (all zeros) for the new segment
         var silentDataProvider = new RawDataProvider(new float[silentSamplesCount]);
         var mainSilentSegment = new AudioSegment(
+            Format,
             silentDataProvider,
             TimeSpan.Zero,
             rangeDuration,
@@ -474,6 +483,7 @@ public class Composition : ISoundDataProvider
                 if (part3SourceDuration > TimeSpan.Zero)
                 {
                     var part3Segment = new AudioSegment(
+                        Format,
                         segment.SourceDataProvider,
                         part3SourceStartTime,
                         part3SourceDuration,
@@ -490,7 +500,7 @@ public class Composition : ISoundDataProvider
 
             // Case 3: Segment overlaps the start of the silence range (tail of segment is silenced)
             // [segmentStart----[rangeStart----segmentEnd]----rangeEnd]
-            if (segmentTimelineStart < rangeStartTime && segmentTimelineEnd > rangeStartTime /* implies segmentTimelineEnd <= rangeEndTime */)
+            if (segmentTimelineStart < rangeStartTime && segmentTimelineEnd > rangeStartTime)
             {
                 var newTimelineDuration = rangeStartTime - segmentTimelineStart;
                 var newSourceDuration = TimeSpan.FromTicks((long)(newTimelineDuration.Ticks * segment.Settings.SpeedFactor));

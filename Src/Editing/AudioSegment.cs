@@ -1,6 +1,7 @@
-﻿using System.Buffers;
+using System.Buffers;
 using SoundFlow.Abstracts;
 using SoundFlow.Interfaces;
+using SoundFlow.Structs;
 
 namespace SoundFlow.Editing;
 
@@ -36,6 +37,10 @@ public class AudioSegment : IDisposable
     private int _currentSourcePassBeingFedToWsola;
     private long _currentStretchedPlayheadInSegmentLoopSamples;
 
+    /// <summary>
+    /// The audio format of the audio segment.
+    /// </summary>
+    public AudioFormat Format { get; }
 
     /// <summary>
     /// Gets or sets the name of the audio segment.
@@ -137,6 +142,7 @@ public class AudioSegment : IDisposable
     /// <summary>
     /// Initializes a new instance of the <see cref="AudioSegment"/> class.
     /// </summary>
+    /// <param name="format">The audio format of the audio segment. Cannot be null.</param>
     /// <param name="sourceDataProvider">The provider of the raw audio data for this segment. Cannot be null.</param>
     /// <param name="sourceStartTime">The starting time offset within the source data to begin reading from.</param>
     /// <param name="sourceDuration">The duration of the audio to read from the source data.</param>
@@ -153,6 +159,7 @@ public class AudioSegment : IDisposable
     /// or if <paramref name="sourceDuration"/> is zero or negative.
     /// </exception>
     public AudioSegment(
+        AudioFormat format,
         ISoundDataProvider sourceDataProvider,
         TimeSpan sourceStartTime,
         TimeSpan sourceDuration,
@@ -161,6 +168,7 @@ public class AudioSegment : IDisposable
         AudioSegmentSettings? settings = null,
         bool ownsDataProvider = false)
     {
+        Format = format;
         _sourceDataProvider = sourceDataProvider ?? throw new ArgumentNullException(nameof(sourceDataProvider));
         _sourceStartTime = sourceStartTime;
         _sourceDuration = sourceDuration;
@@ -184,7 +192,7 @@ public class AudioSegment : IDisposable
     /// </summary>
     private void InitializeWsolaBuffers()
     {
-        var channels = AudioEngine.Channels > 0 ? AudioEngine.Channels : 2;
+        var channels = Format.Channels > 0 ? Format.Channels : 2;
         const int baseBufferSizeFrames = WsolaTimeStretcher.DefaultWindowSizeFrames * 8;
         _wsolaFeedBuffer = new float[baseBufferSizeFrames * channels];
         _wsolaOutputBuffer = new float[baseBufferSizeFrames * channels * 3];
@@ -197,7 +205,7 @@ public class AudioSegment : IDisposable
     /// </summary>
     internal void FullResetState()
     {
-        var channels = AudioEngine.Channels > 0 ? AudioEngine.Channels : 2;
+        var channels = Format.Channels > 0 ? Format.Channels : 2;
         var sourceSampleRate = SourceDataProvider.SampleRate;
 
         // Reset data provider position to the beginning of the segment's source content.
@@ -241,7 +249,7 @@ public class AudioSegment : IDisposable
     /// </summary>
     private void ResetForNewSourcePassForWsola()
     {
-        var channels = AudioEngine.Channels > 0 ? AudioEngine.Channels : 2;
+        var channels = Format.Channels > 0 ? Format.Channels : 2;
         var sourceSampleRate = SourceDataProvider.SampleRate;
 
         // Reset data provider position to the beginning of the source segment.
@@ -314,7 +322,7 @@ public class AudioSegment : IDisposable
     /// <returns>A new <see cref="AudioSegment"/> object with copied properties.</returns>
     public AudioSegment Clone(TimeSpan? newTimelineStartTime = null)
     {
-        return new AudioSegment(SourceDataProvider,
+        return new AudioSegment(Format, SourceDataProvider,
             SourceStartTime, SourceDuration, newTimelineStartTime ?? TimelineStartTime, $"{Name} (Clone)",
             Settings.Clone());
     }
@@ -463,11 +471,11 @@ public class AudioSegment : IDisposable
 
                 // Apply Modifiers
                 foreach (var modifier in Settings.Modifiers)
-                    modifier.Process(processingFrameSpan);
+                    modifier.Process(processingFrameSpan, targetChannels);
                 
                 // Apply Analyzers
                 foreach (var analyzer in Settings.Analyzers)
-                    analyzer.Process(processingFrameSpan);
+                    analyzer.Process(processingFrameSpan, targetChannels);
 
                 // Calculate current time within the effective timeline instance for fade and other time-dependent effects.
                 var timeIntoCurrentEffectiveLoopInstance = MapStretchedOffsetToEffectiveTimelineOffset(timeOffsetWithinCurrentStretchedPass, Settings.SpeedFactor) 
@@ -531,17 +539,17 @@ public class AudioSegment : IDisposable
     /// <param name="outputBuffer">The buffer to fill with stretched samples.</param>
     /// <param name="sampleRate">The sample rate of the stretched audio (same as source for WSOLA).</param>
     /// <param name="channels">The number of channels.</param>
-    /// <param name="currentSegmentLoopPass">The current loop pass index for context, especially for non-WSOLA path.</param>
+    /// <param name="currentSegmentLoopPassContext">The current loop pass index for context, especially for non-WSOLA path.</param>
     /// <returns>The number of samples written to the output buffer.</returns>
     private int GetTimeStretchedSamples(TimeSpan timeOffsetInCurrentStretchedPass, TimeSpan stretchedDurationToRead, Span<float> outputBuffer,
-        int sampleRate, int channels, int currentSegmentLoopPass
+        int sampleRate, int channels, int currentSegmentLoopPassContext
     )
     {
         // If no WSOLA stretching, just read raw (handling loops and reversal internally)
         if (_segmentWsolaStretcher == null || Math.Abs(Settings.TimeStretchFactor - 1.0f) < float.Epsilon)
         {
             return ReadAndReverseSourceSamples(timeOffsetInCurrentStretchedPass, stretchedDurationToRead, outputBuffer,
-                sampleRate, channels, currentSegmentLoopPass, isFeedingWsola: false);
+                sampleRate, channels, currentSegmentLoopPassContext, isFeedingWsola: false);
         }
 
         // WSOLA Path

@@ -1,7 +1,7 @@
 using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
-using SoundFlow.Utils;
+using SoundFlow.Structs;
 
 namespace SoundFlow.Providers;
 
@@ -16,12 +16,14 @@ public sealed class StreamDataProvider : ISoundDataProvider
     /// <summary>
     ///     Initializes a new instance of the <see cref="StreamDataProvider" /> class.
     /// </summary>
+    /// <param name="engine">The audio engine instance.</param>
+    /// <param name="format">The audio format.</param>
     /// <param name="stream">The stream to read audio data from.</param>
-    public StreamDataProvider(Stream stream)
+    public StreamDataProvider(AudioEngine engine, AudioFormat format, Stream stream)
     {
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
-        _decoder = AudioEngine.Instance.CreateDecoder(stream);
-        SampleRate = AudioEngine.Instance.SampleRate;
+        _decoder = engine.CreateDecoder(stream, format);
+        SampleRate = _decoder.SampleRate;
 
         _decoder.EndOfStreamReached += (_, args) =>
             EndOfStreamReached?.Invoke(this, args);

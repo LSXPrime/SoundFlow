@@ -1,24 +1,29 @@
-﻿using System.Numerics;
+using System.Numerics;
 using SoundFlow.Abstracts;
 using SoundFlow.Interfaces;
+using SoundFlow.Structs;
 using SoundFlow.Utils;
 
 namespace SoundFlow.Components;
 
 /// <summary>
 /// Detects voice activity in audio streams using spectral analysis.
+/// This version includes hysteresis (hangover) to prevent rapid state changes.
 /// </summary>
 public class VoiceActivityDetector : AudioAnalyzer
 {
     private readonly Queue<float> _sampleBuffer = new();
     private readonly int _fftSize;
     private readonly float[] _window;
-    private readonly int _sampleRate;
-    private readonly int _channels;
     private bool _isVoiceActive;
-    private double _threshold;
+    private float _energyThreshold;
     private int _speechLowBand = 300;
     private int _speechHighBand = 3400;
+    private int _activationFrames;
+    private int _hangoverFrames;
+    private int _currentSpeechFrameCount;
+    private int _currentSilenceFrameCount;
+    private readonly float _frameDurationMs;
 
     /// <summary>
     /// Gets whether voice activity is currently detected.
@@ -37,14 +42,26 @@ public class VoiceActivityDetector : AudioAnalyzer
     }
 
     /// <summary>
-    /// Gets or sets the threshold multiplier for voice detection (relative to noise floor).
+    /// Gets or sets the energy threshold for voice detection.
     /// </summary>
-    public double Threshold
+    public float EnergyThreshold
     {
-        get => _threshold;
-        set => _threshold = value;
+        get => _energyThreshold;
+        set => _energyThreshold = value;
     }
     
+    // CHANGED: Added properties for activation and hangover times
+    /// <summary>
+    /// Gets or sets the time in milliseconds the signal must be considered speech before activation.
+    /// Helps prevent short noise bursts from triggering the VAD.
+    /// </summary>
+    public float ActivationTimeMs { get; set; } = 30f;
+
+    /// <summary>
+    /// Gets or sets the time in milliseconds to keep the VAD active after the last speech frame.
+    /// Prevents the VAD from deactivating during short pauses.
+    /// </summary>
+    public float HangoverTimeMs { get; set; } = 200f;
 
     /// <summary>
     /// Gets or sets the lower bound of the frequency range used for speech detection in Hz.
@@ -67,8 +84,9 @@ public class VoiceActivityDetector : AudioAnalyzer
     /// <summary>
     /// Initializes a new voice activity detector.
     /// </summary>
-    /// <param name="fftSize">FFT window size (must be power of two)</param>
-    /// <param name="threshold">Detection sensitivity threshold</param>
+    /// <param name="format">The audio format containing channels and sample rate and sample format</param>
+    /// <param name="fftSize">FFT window size (must be power of two). A common value is 1024 for 48kHz audio.</param>
+    /// <param name="energyThreshold">Detection energy threshold. This is highly dependent on your input signal level.</param>
     /// <param name="visualizer">Optional visualizer for debugging</param>
     /// <remarks>
     /// Increase FFT size for better frequency resolution.
@@ -76,55 +94,89 @@ public class VoiceActivityDetector : AudioAnalyzer
     /// Use larger FFT sizes in low-noise environments.
     /// Calibrate threshold based on input levels.
     /// </remarks>
-    public VoiceActivityDetector(int fftSize = 1024, float threshold = 0.01f, IVisualizer? visualizer = null)
-        : base(visualizer)
+    public VoiceActivityDetector(AudioFormat format, int fftSize = 1024, float energyThreshold = 5f, IVisualizer? visualizer = null)
+        : base(format, visualizer)
     {
         if (!MathHelper.IsPowerOfTwo(fftSize))
             throw new ArgumentException("FFT size must be a power of two", nameof(fftSize));
 
         _fftSize = fftSize;
-        _threshold = threshold;
+        _energyThreshold = energyThreshold;
         _window = MathHelper.HammingWindow(fftSize);
-        _sampleRate = AudioEngine.Instance.SampleRate;
-        _channels = AudioEngine.Channels;
+
+        // CHANGED: Calculate frame duration to convert time properties to frame counts
+        // We assume 50% overlap for continuous analysis, so we process frames every _fftSize / 2 samples.
+        _frameDurationMs = (_fftSize / 2.0f) / Format.SampleRate * 1000.0f;
     }
 
     /// <summary>
     /// Analyzes audio buffer for voice activity.
     /// </summary>
-    protected override void Analyze(Span<float> buffer)
+    protected override void Analyze(Span<float> buffer, int channels)
     {
-        AddSamplesToBuffer(buffer);
-            
+        AddSamplesToBuffer(buffer, channels);
+
+        _activationFrames = (int)Math.Ceiling(ActivationTimeMs / _frameDurationMs);
+        _hangoverFrames = (int)Math.Ceiling(HangoverTimeMs / _frameDurationMs);
+
         while (_sampleBuffer.Count >= _fftSize)
         {
             var frame = new float[_fftSize];
+            // Create a snapshot for analysis without dequeuing everything immediately
+            var frameSamples = _sampleBuffer.ToArray(); 
             for (int i = 0; i < _fftSize; i++)
-                frame[i] = _sampleBuffer.Dequeue();
+                frame[i] = frameSamples[i];
 
             ApplyWindow(frame);
             var spectrum = ComputeSpectrum(frame);
             var energy = CalculateSpeechBandEnergy(spectrum);
-                
-            IsVoiceActive = energy > _threshold;
+
+            bool isCurrentFrameSpeech = energy > _energyThreshold;
+
+            if (isCurrentFrameSpeech)
+            {
+                _currentSpeechFrameCount++;
+                _currentSilenceFrameCount = 0;
+            }
+            else
+            {
+                _currentSilenceFrameCount++;
+                _currentSpeechFrameCount = 0;
+            }
+
+            if (!IsVoiceActive && _currentSpeechFrameCount >= _activationFrames)
+            {
+                // We have enough consecutive speech frames to activate
+                IsVoiceActive = true;
+            }
+            else if (IsVoiceActive && _currentSilenceFrameCount >= _hangoverFrames)
+            {
+                // We have enough consecutive silence frames to deactivate
+                IsVoiceActive = false;
+            }
+            
+            for (int i = 0; i < _fftSize / 2; i++)
+            {
+                _sampleBuffer.Dequeue();
+            }
         }
     }
 
-    private void AddSamplesToBuffer(Span<float> buffer)
+    private void AddSamplesToBuffer(Span<float> buffer, int channels)
     {
-        if (_channels == 1)
+        if (channels == 1)
         {
             foreach (var sample in buffer)
                 _sampleBuffer.Enqueue(sample);
         }
         else
         {
-            for (var i = 0; i < buffer.Length; i += _channels)
+            for (var i = 0; i < buffer.Length; i += channels)
             {
                 float sum = 0;
-                for (var ch = 0; ch < _channels; ch++)
+                for (var ch = 0; ch < channels; ch++)
                     sum += buffer[i + ch];
-                _sampleBuffer.Enqueue(sum / _channels);
+                _sampleBuffer.Enqueue(sum / channels);
             }
         }
     }
@@ -142,10 +194,12 @@ public class VoiceActivityDetector : AudioAnalyzer
             complexFrame[i] = new Complex(frame[i], 0);
 
         MathHelper.Fft(complexFrame);
-
+        
         var spectrum = new float[_fftSize / 2];
+        // Start from 1 to ignore DC offset
         for (var i = 1; i < _fftSize / 2; i++)
         {
+            // Power Spectrum = Magnitude^2
             var magnitude = (float)(complexFrame[i].Magnitude / _fftSize);
             spectrum[i] = magnitude * magnitude;
         }
@@ -154,9 +208,7 @@ public class VoiceActivityDetector : AudioAnalyzer
     
     private float CalculateSpeechBandEnergy(float[] spectrum)
     {
-
-            
-        var binSize = _sampleRate / (float)_fftSize;
+        var binSize = Format.SampleRate / (float)_fftSize;
         var lowBin = (int)(_speechLowBand / binSize);
         var highBin = (int)(_speechHighBand / binSize);
             
@@ -174,4 +226,3 @@ public class VoiceActivityDetector : AudioAnalyzer
     /// </summary>
     public event Action<bool>? SpeechDetected;
 }
-

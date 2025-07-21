@@ -1,4 +1,4 @@
-﻿namespace SoundFlow.Editing.Persistence;
+namespace SoundFlow.Editing.Persistence;
 
 /// <summary>
 /// Serializable representation of a <see cref="Track"/> for project files.

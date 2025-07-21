@@ -1,6 +1,9 @@
-﻿using System.Buffers;
+﻿using System;
+using System.Buffers;
 using System.Runtime.InteropServices;
+using SoundFlow.Enums;
 using SoundFlow.Interfaces;
+using SoundFlow.Structs;
 
 namespace SoundFlow.Extensions.WebRtc.Apm.Components;
 
@@ -23,7 +26,7 @@ public class NoiseSuppressor : IDisposable
     private readonly StreamConfig _inputStreamConfig;
     private readonly StreamConfig _outputStreamConfig;
 
-    private readonly int _numChannels;
+    private readonly AudioFormat _audioFormat;
     private readonly int _apmFrameSizePerChannel; // Samples per channel for a 10ms APM frame
     private const int BytesPerSample = sizeof(float);
 
@@ -48,30 +51,35 @@ public class NoiseSuppressor : IDisposable
     /// Initializes a new instance of the <see cref="NoiseSuppressor"/> class.
     /// </summary>
     /// <param name="dataProvider">The audio data provider to process.</param>
-    /// <param name="sampleRate">The sample rate of the audio from the dataProvider. Must be 8k, 16k, 32k, or 48k Hz.</param>
-    /// <param name="numChannels">The number of channels in the audio from the dataProvider.</param>
+    /// <param name="audioFormat">The format of the audio from the dataProvider. SampleRate must be 8k, 16k, 32k, or 48k Hz. Format must be F32.</param>
     /// <param name="suppressionLevel">The desired level of noise suppression.</param>
-    /// <param name="useMultichannelProcessing">If true and numChannels > 1, attempts to process channels independently. If false, channels may be downmixed by APM.</param>
+    /// <param name="useMultichannelProcessing">If true and audioFormat.Channels > 1, attempts to process channels independently. If false, channels may be downmixed by APM.</param>
     /// <exception cref="ArgumentNullException">Thrown if dataProvider is null.</exception>
-    /// <exception cref="ArgumentException">Thrown if sampleRate or numChannels are invalid or unsupported by WebRTC APM.</exception>
+    /// <exception cref="ArgumentException">Thrown if audioFormat is invalid or unsupported by WebRTC APM.</exception>
     public NoiseSuppressor(
         ISoundDataProvider dataProvider,
-        int sampleRate,
-        int numChannels,
+        AudioFormat audioFormat,
         NoiseSuppressionLevel suppressionLevel = NoiseSuppressionLevel.High,
         bool useMultichannelProcessing = false)
     {
         _dataProvider = dataProvider ?? throw new ArgumentNullException(nameof(dataProvider));
-        _numChannels = numChannels;
+        _audioFormat = audioFormat;
+
+        // Extract properties for easier use and validation
+        int sampleRate = _audioFormat.SampleRate;
+        int numChannels = _audioFormat.Channels;
+
+        if (_audioFormat.Format != SampleFormat.F32)
+            throw new ArgumentException("Audio format must be F32 (float) for WebRTC APM processing.", nameof(audioFormat));
 
         if (sampleRate != 8000 && sampleRate != 16000 && sampleRate != 32000 && sampleRate != 48000)
-            throw new ArgumentException($"Unsupported sample rate for WebRTC Audio Processing Module: {sampleRate} Hz. Must be 8k, 16k, 32k, or 48k.");
-        if (_numChannels <= 0)
-            throw new ArgumentException("Number of channels must be greater than 0.", nameof(numChannels));
+            throw new ArgumentException($"Unsupported sample rate for WebRTC Audio Processing Module: {sampleRate} Hz. Must be 8k, 16k, 32k, or 48k.", nameof(audioFormat));
+        if (numChannels <= 0)
+            throw new ArgumentException("Number of channels must be greater than 0.", nameof(audioFormat));
 
         _apmFrameSizePerChannel = AudioProcessingModule.GetFrameSize(sampleRate);
         if (_apmFrameSizePerChannel == 0)
-            throw new ArgumentException($"Could not determine APM frame size for sample rate {sampleRate} Hz.", nameof(sampleRate));
+            throw new ArgumentException($"Could not determine APM frame size for sample rate {sampleRate} Hz.", nameof(audioFormat));
 
         var apmFrameSizeBytesPerChannel = _apmFrameSizePerChannel * BytesPerSample;
 
@@ -87,7 +95,7 @@ public class NoiseSuppressor : IDisposable
         _apmConfig.SetPreAmplifier(false, 1.0f);
 
         // Configure pipeline for multi-channel or mono processing
-        var multiChannelFlag = useMultichannelProcessing && _numChannels > 1;
+        var multiChannelFlag = useMultichannelProcessing && numChannels > 1;
         _apmConfig.SetPipeline(sampleRate, multiChannelFlag, multiChannelFlag, DownmixMethod.AverageChannels);
 
         var applyError = _apm.ApplyConfig(_apmConfig);
@@ -98,8 +106,8 @@ public class NoiseSuppressor : IDisposable
             throw new InvalidOperationException($"Failed to apply APM config: {applyError}");
         }
 
-        _inputStreamConfig = new StreamConfig(sampleRate, _numChannels);
-        _outputStreamConfig = new StreamConfig(sampleRate, _numChannels);
+        _inputStreamConfig = new StreamConfig(sampleRate, numChannels);
+        _outputStreamConfig = new StreamConfig(sampleRate, numChannels);
 
         var initError = _apm.Initialize();
         if (initError != ApmError.NoError)
@@ -112,14 +120,14 @@ public class NoiseSuppressor : IDisposable
         }
 
         // Allocate managed and unmanaged buffers
-        _deinterleavedInputApmFrame = new float[_numChannels][];
-        _deinterleavedOutputApmFrame = new float[_numChannels][];
-        _inputChannelPtrs = new nint[_numChannels];
-        _outputChannelPtrs = new nint[_numChannels];
+        _deinterleavedInputApmFrame = new float[numChannels][];
+        _deinterleavedOutputApmFrame = new float[numChannels][];
+        _inputChannelPtrs = new nint[numChannels];
+        _outputChannelPtrs = new nint[numChannels];
 
         try
         {
-            for (var i = 0; i < _numChannels; i++)
+            for (var i = 0; i < numChannels; i++)
             {
                 _deinterleavedInputApmFrame[i] = new float[_apmFrameSizePerChannel];
                 _deinterleavedOutputApmFrame[i] = new float[_apmFrameSizePerChannel];
@@ -165,7 +173,7 @@ public class NoiseSuppressor : IDisposable
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
 
-        var samplesPerApmFrameInterleaved = _apmFrameSizePerChannel * _numChannels;
+        var samplesPerApmFrameInterleaved = _apmFrameSizePerChannel * _audioFormat.Channels;
         var providerReadBuffer = ArrayPool<float>.Shared.Rent(samplesPerApmFrameInterleaved);
         var processedFrameBuffer = ArrayPool<float>.Shared.Rent(samplesPerApmFrameInterleaved);
 
@@ -191,12 +199,12 @@ public class NoiseSuppressor : IDisposable
                         currentFrameSpan[samplesActuallyReadFromProvider..].Clear();
                     }
 
-                    Deinterleave(currentFrameSpan, _numChannels, _apmFrameSizePerChannel, _deinterleavedInputApmFrame);
+                    Deinterleave(currentFrameSpan, _audioFormat.Channels, _apmFrameSizePerChannel, _deinterleavedInputApmFrame);
 
-                    for (var ch = 0; ch < _numChannels; ch++)
+                    for (var ch = 0; ch < _audioFormat.Channels; ch++)
                         Marshal.Copy(_deinterleavedInputApmFrame[ch], 0, _inputChannelPtrs[ch], _apmFrameSizePerChannel);
 
-                    var error = NativeMethods.webrtc_apm_process_stream(
+                    var error = NativeMethods.ProcessStream(
                         _apm.NativePtr,
                         _inputChannelArrayPtr,
                         _inputStreamConfig.NativePtr,
@@ -205,10 +213,10 @@ public class NoiseSuppressor : IDisposable
 
                     if (error == ApmError.NoError)
                     {
-                        for (var ch = 0; ch < _numChannels; ch++)
+                        for (var ch = 0; ch < _audioFormat.Channels; ch++)
                             Marshal.Copy(_outputChannelPtrs[ch], _deinterleavedOutputApmFrame[ch], 0, _apmFrameSizePerChannel);
 
-                        Interleave(_deinterleavedOutputApmFrame, _numChannels, _apmFrameSizePerChannel, processedFrameBuffer.AsSpan(0, samplesPerApmFrameInterleaved));
+                        Interleave(_deinterleavedOutputApmFrame, _audioFormat.Channels, _apmFrameSizePerChannel, processedFrameBuffer.AsSpan(0, samplesPerApmFrameInterleaved));
 
                         // Raise event/handler with the valid portion of the processed chunk
                         var validProcessedChunk = processedFrameBuffer.AsMemory(0, samplesActuallyReadFromProvider);
@@ -269,9 +277,9 @@ public class NoiseSuppressor : IDisposable
             if (_inputChannelArrayHandle.IsAllocated) _inputChannelArrayHandle.Free();
             if (_outputChannelArrayHandle.IsAllocated) _outputChannelArrayHandle.Free();
 
-            for (var i = 0; i < _numChannels; i++)
+            for (var i = 0; i < _audioFormat.Channels; i++)
                 if (_inputChannelPtrs[i] != nint.Zero) Marshal.FreeHGlobal(_inputChannelPtrs[i]);
-            for (var i = 0; i < _numChannels; i++)
+            for (var i = 0; i < _audioFormat.Channels; i++)
                 if (_outputChannelPtrs[i] != nint.Zero) Marshal.FreeHGlobal(_outputChannelPtrs[i]);
 
             _apm.Dispose();

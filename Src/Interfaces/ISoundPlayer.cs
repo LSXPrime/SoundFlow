@@ -1,11 +1,11 @@
-﻿using SoundFlow.Enums;
+using SoundFlow.Enums;
 
 namespace SoundFlow.Interfaces;
 
 /// <summary>
 /// Defines the interface for a sound player component.
 /// </summary>
-public interface ISoundPlayer
+public interface ISoundPlayer : IDisposable
 {
     /// <summary>
     /// Gets the current playback state of the sound player.

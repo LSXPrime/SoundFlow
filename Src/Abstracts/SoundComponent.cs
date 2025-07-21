@@ -2,13 +2,14 @@ using System.Buffers;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using SoundFlow.Components;
+using SoundFlow.Structs;
 
 namespace SoundFlow.Abstracts;
 
 /// <summary>
 ///     Base class for audio processing components.
 /// </summary>
-public abstract class SoundComponent
+public abstract class SoundComponent : IDisposable
 {
     private static readonly ArrayPool<float> BufferPool = ArrayPool<float>.Shared;
 
@@ -24,8 +25,22 @@ public abstract class SoundComponent
     private bool _solo;
     private float _volume = 1f;
     private Vector2 _volumePanFactors;
-    private Vector2 _previousVolumePanFactors;
     private readonly object _stateLock = new();
+
+    /// <summary>
+    /// 
+    /// </summary>
+    public bool IsDisposed { get; private set; }
+
+    /// <summary>
+    /// Gets the engine context this component belongs to.
+    /// </summary>
+    public AudioEngine Engine { get; }
+    
+    /// <summary>
+    /// Gets the audio format of the component.
+    /// </summary>
+    public AudioFormat Format { get; }
 
     /// <summary>
     ///     Name of the component
@@ -35,15 +50,24 @@ public abstract class SoundComponent
     /// <summary>
     ///     Parent mixer of the component
     /// </summary>
-    public Mixer? Parent { get; set; } = Mixer.Master;
+    public Mixer? Parent { get; set; }
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="SoundComponent" /> class.
     /// </summary>
-    protected SoundComponent()
+    protected SoundComponent(AudioEngine engine, AudioFormat format)
     {
-        UpdateVolumePanFactors();
-        _previousVolumePanFactors = _volumePanFactors;
+        Engine = engine;
+        Format = format;
+        UpdateVolumePanFactors(Format.Channels);
+    }
+
+    /// <summary>
+    ///     Finalizes an instance of the <see cref="SoundComponent"/> class.
+    /// </summary>
+    ~SoundComponent()
+    {
+        Dispose(false);
     }
 
     /// <summary>
@@ -72,16 +96,18 @@ public abstract class SoundComponent
     ///     Volume of the component
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">Thrown if the volume is negative.</exception>
+    /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
     public virtual float Volume
     {
         get => _volume;
         set
         {
+            ObjectDisposedException.ThrowIf(IsDisposed, this);
             ArgumentOutOfRangeException.ThrowIfNegative(value);
             lock (_stateLock)
             {
                 _volume = value;
-                UpdateVolumePanFactors();
+                UpdateVolumePanFactors(Format.Channels);
             }
         }
     }
@@ -90,16 +116,18 @@ public abstract class SoundComponent
     ///     Pan of the component
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">Thrown if the pan is outside the range [0, 1].</exception>
+    /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
     public virtual float Pan
     {
         get => _pan;
         set
         {
+            ObjectDisposedException.ThrowIf(IsDisposed, this);
             if (value is < 0f or > 1f) throw new ArgumentOutOfRangeException(nameof(value), "Pan must be between 0.0 and 1.0.");
             lock (_stateLock)
             {
                 _pan = value;
-                UpdateVolumePanFactors();
+                UpdateVolumePanFactors(Format.Channels);
             }
         }
     }
@@ -112,16 +140,19 @@ public abstract class SoundComponent
     /// <summary>
     ///     Whether the component is soloed
     /// </summary>
+    /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
     public virtual bool Solo
     {
         get => _solo;
         set
         {
+            ObjectDisposedException.ThrowIf(IsDisposed, this);
             lock (_stateLock)
             {
+                if (_solo == value) return;
                 _solo = value;
-                if (_solo) AudioEngine.Instance.SoloComponent(this);
-                else AudioEngine.Instance.UnsoloComponent(this);
+                if (_solo) Engine.SoloComponent(this);
+                else Engine.UnsoloComponent(this);
             }
         }
     }
@@ -153,14 +184,21 @@ public abstract class SoundComponent
         }
     }
 
-    private void UpdateVolumePanFactors()
+    private void UpdateVolumePanFactors(int channels)
     {
         var panValue = Math.Clamp(_pan, 0f, 1f);
-        _volumePanFactors = new Vector2(
-            _volume * MathF.Sqrt(1f - panValue),
-            _volume * MathF.Sqrt(panValue)
-        );
-        _previousVolumePanFactors = _volumePanFactors;
+        if (channels == 1)
+        {
+             // For mono, combine pan to a single gain factor.
+            _volumePanFactors = new Vector2(_volume, 0);
+        }
+        else
+        {
+            _volumePanFactors = new Vector2(
+                _volume * MathF.Sqrt(1f - panValue),
+                _volume * MathF.Sqrt(panValue)
+            );
+        }
     }
 
     /// <summary>
@@ -168,9 +206,12 @@ public abstract class SoundComponent
     /// </summary>
     /// <param name="input">The component to connect to.</param>
     /// <exception cref="InvalidOperationException">Thrown if the connection would create a cycle.</exception>
+    /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
     public void ConnectInput(SoundComponent input)
     {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         ArgumentNullException.ThrowIfNull(input);
+        if (input.IsDisposed) throw new ArgumentException("Cannot connect to a disposed component.", nameof(input));
         if (input == this) throw new InvalidOperationException("Cannot connect to self");
 
         SoundComponent first, second;
@@ -202,8 +243,15 @@ public abstract class SoundComponent
     ///     Disconnects this component from another component.
     /// </summary>
     /// <param name="input">The component to disconnect from.</param>
+    /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
     public void DisconnectInput(SoundComponent input)
     {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        ArgumentNullException.ThrowIfNull(input);
+
+        // If the other component is disposed, its connections are already being torn down.
+        if (input.IsDisposed) return;
+
         lock (_connectionsLock)
         {
             if (!_inputs.Remove(input)) return;
@@ -240,8 +288,10 @@ public abstract class SoundComponent
     ///     Adds a modifier to the component.
     /// </summary>
     /// <param name="modifier">The modifier to add.</param>
+    /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
     public void AddModifier(SoundModifier modifier)
     {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         lock (_stateLock)
         {
             if (!_modifiers.Contains(modifier))
@@ -253,8 +303,10 @@ public abstract class SoundComponent
     ///     Removes a modifier from the component.
     /// </summary>
     /// <param name="modifier">The modifier to remove.</param>
+    /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
     public void RemoveModifier(SoundModifier modifier)
     {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         lock (_stateLock)
             _modifiers.Remove(modifier);
     }
@@ -263,8 +315,10 @@ public abstract class SoundComponent
     ///     Adds an analyzer to the component.
     /// </summary>
     /// <param name="analyzer">The analyzer to add.</param>
+    /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
     public void AddAnalyzer(AudioAnalyzer analyzer)
     {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         lock (_stateLock)
         {
             if (!_analyzers.Contains(analyzer))
@@ -276,15 +330,17 @@ public abstract class SoundComponent
     ///     Removes an analyzer from the component.
     /// </summary>
     /// <param name="analyzer">The analyzer to remove.</param>
+    /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
     public void RemoveAnalyzer(AudioAnalyzer analyzer)
     {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         lock (_stateLock)
             _analyzers.Remove(analyzer);
     }
 
-    internal void Process(Span<float> outputBuffer)
+    internal void Process(Span<float> outputBuffer, int channels)
     {
-        if (!Enabled || Mute) return;
+        if (!Enabled || Mute || IsDisposed) return;
 
         float[]? rentedBuffer = null;
         try
@@ -300,9 +356,9 @@ public abstract class SoundComponent
             }
 
             foreach (var input in currentInputs)
-                input.Process(workingBuffer);
+                input.Process(workingBuffer, channels);
 
-            GenerateAudio(workingBuffer);
+            GenerateAudio(workingBuffer, channels);
 
             SoundModifier[] currentModifiers;
             AudioAnalyzer[] currentAnalyzers;
@@ -312,21 +368,20 @@ public abstract class SoundComponent
             {
                 currentModifiers = _modifiers.Count == 0 ? [] : _modifiers.ToArray();
                 currentAnalyzers = _analyzers.Count == 0 ? [] : _analyzers.ToArray();
-
+                UpdateVolumePanFactors(channels);
                 currentVolumePan = _volumePanFactors;
-                _previousVolumePanFactors = _volumePanFactors;
             }
 
             foreach (var modifier in currentModifiers)
                 if (modifier.Enabled)
-                    modifier.Process(workingBuffer);
+                    modifier.Process(workingBuffer, channels);
 
-            ApplyVolumeAndPanning(workingBuffer, currentVolumePan);
+            ApplyVolumeAndPanning(workingBuffer, currentVolumePan, channels);
 
             MixBuffers(workingBuffer, outputBuffer);
 
             foreach (var analyzer in currentAnalyzers)
-                analyzer.Process(workingBuffer);
+                analyzer.Process(workingBuffer, channels);
         }
         finally
         {
@@ -366,9 +421,9 @@ public abstract class SoundComponent
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void ApplyVolumeAndPanning(Span<float> buffer, Vector2 volumePan)
+    private void ApplyVolumeAndPanning(Span<float> buffer, Vector2 volumePan, int channels)
     {
-        switch (AudioEngine.Channels)
+        switch (channels)
         {
             case 1:
                 // Constant power calculation for mono
@@ -379,7 +434,7 @@ public abstract class SoundComponent
                 ApplyStereoVolume(buffer, volumePan);
                 break;
             default:
-                ApplyMultiChannelVolume(buffer, AudioEngine.Channels, volumePan);
+                ApplyMultiChannelVolume(buffer, channels, volumePan);
                 break;
         }
     }
@@ -476,5 +531,66 @@ public abstract class SoundComponent
     ///     Generates audio data for the component.
     /// </summary>
     /// <param name="buffer">The buffer to write audio data to.</param>
-    protected abstract void GenerateAudio(Span<float> buffer);
+    /// <param name="channels">The number of channels to generate for.</param>
+    protected abstract void GenerateAudio(Span<float> buffer, int channels);
+
+    /// <inheritdoc />
+    public virtual void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    ///     Releases unmanaged and - optionally - managed resources.
+    /// </summary>
+    /// <param name="disposing"><c>true</c> to release both managed and unmanaged resources; <c>false</c> to release only unmanaged resources.</param>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (IsDisposed) return;
+
+        if (disposing)
+        {
+            // Stop processing immediately.
+            Enabled = false;
+
+            // Unregister from the engine's solo system.
+            if (_solo) Engine.UnsoloComponent(this);
+
+            // Explicitly remove from parent mixer.
+            Parent?.RemoveComponent(this);
+            Parent = null;
+
+            // Disconnect all inputs and outputs.
+            var inputsToDisconnect = Inputs;
+            var outputsToDisconnect = Outputs;
+
+            // Tell our outputs to disconnect from us.
+            foreach (var output in outputsToDisconnect)
+            {
+                output.DisconnectInput(this);
+            }
+            
+            // Disconnect from our inputs.
+            foreach (var input in inputsToDisconnect)
+            {
+                DisconnectInput(input);
+            }
+            
+            lock (_stateLock)
+            {
+                _modifiers.Clear();
+                _analyzers.Clear();
+            }
+        }
+        
+        // Clear connection lists. This is defensive, as they should be empty by now.
+        lock (_connectionsLock)
+        {
+            _inputs.Clear();
+            _outputs.Clear();
+        }
+
+        IsDisposed = true;
+    }
 }

@@ -1,4 +1,4 @@
-﻿namespace SoundFlow.Backends.MiniAudio.Enums;
+namespace SoundFlow.Backends.MiniAudio.Enums;
 
 internal enum SeekPoint
 {

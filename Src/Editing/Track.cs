@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 
 namespace SoundFlow.Editing;
 
@@ -11,7 +11,7 @@ public class Track
     private string _name;
     private TrackSettings _settings;
     private Composition? _parentComposition;
-
+    
     /// <summary>
     /// Gets or sets the name of the track.
     /// </summary>
@@ -262,7 +262,7 @@ public class Track
         {
             if (modifier.Enabled)
             {
-                modifier.Process(outputBuffer[..totalSamplesToRender]);
+                modifier.Process(outputBuffer[..totalSamplesToRender], targetChannels);
             }
         }
 
@@ -271,7 +271,7 @@ public class Track
         {
             if (analyzer.Enabled)
             {
-                analyzer.Process(outputBuffer[..totalSamplesToRender]);
+                analyzer.Process(outputBuffer[..totalSamplesToRender], targetChannels);
             }
         }
 

@@ -1,4 +1,5 @@
-﻿using SoundFlow.Abstracts;
+using SoundFlow.Abstracts;
+using SoundFlow.Structs;
 
 namespace SoundFlow.Components;
 
@@ -7,6 +8,13 @@ namespace SoundFlow.Components;
 /// </summary>
 public class LowFrequencyOscillator : SoundComponent
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="LowFrequencyOscillator"/> class.
+    /// </summary>
+    /// <param name="engine">The parent audio engine.</param>
+    /// <param name="format">The audio format containing channels and sample rate and sample format</param>
+    public LowFrequencyOscillator(AudioEngine engine, AudioFormat format) : base(engine, format) { }
+
     /// <inheritdoc/>
     public override string Name { get; set; } = "LFO";
 
@@ -132,9 +140,9 @@ public class LowFrequencyOscillator : SoundComponent
     }
 
     /// <inheritdoc/>
-    protected override void GenerateAudio(Span<float> buffer)
+    protected override void GenerateAudio(Span<float> buffer, int channels)
     {
-        _phaseIncrement = (float)(2.0 * Math.PI * Rate / AudioEngine.Instance.SampleRate);
+        _phaseIncrement = (float)(2.0 * Math.PI * Rate / Format.SampleRate);
 
         for (var i = 0; i < buffer.Length; i++)
         {

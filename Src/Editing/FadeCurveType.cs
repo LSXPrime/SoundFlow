@@ -1,4 +1,4 @@
-﻿namespace SoundFlow.Editing;
+namespace SoundFlow.Editing;
 
 /// <summary>
 /// Defines the types of curves that can be used for fade-in and fade-out effects on audio segments.

@@ -1,4 +1,4 @@
-﻿namespace SoundFlow.Editing.Persistence;
+namespace SoundFlow.Editing.Persistence;
 
 /// <summary>
 /// Represents the configurable settings for a Track,

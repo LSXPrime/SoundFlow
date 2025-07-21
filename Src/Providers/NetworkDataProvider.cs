@@ -1,72 +1,52 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
-using SoundFlow.Utils;
+using SoundFlow.Structs;
 
 namespace SoundFlow.Providers;
 
 /// <summary>
 ///     Provides audio data from an internet source, supporting both direct audio URLs and HLS (m3u(8)) playlists.
 /// </summary>
+/// <remarks>
+///     Note: Initialization is performed asynchronously. The provider may not be ready to produce data immediately
+///     after the constructor returns. Methods will return 0 or default values until initialization is complete
+/// </remarks>
 public sealed class NetworkDataProvider : ISoundDataProvider
 {
-    private readonly string _url;
-    private ISoundDecoder? _decoder;
     private readonly HttpClient _httpClient;
-    private Stream? _stream;
-    private long? _contentLength;
-
-    private readonly Queue<float> _audioBuffer = new();
-    private int _samplePosition;
-    private bool _isEndOfStream;
-    private readonly object _lock = new();
-
-    // For HLS
-    private bool _isHlsStream;
-    private readonly List<HlsSegment> _hlsSegments = [];
-    private int _currentSegmentIndex;
-    private DateTime _lastPlaylistRefreshTime;
-    private bool _isEndList;
-    private double _hlsTotalDuration;
-    private CancellationTokenSource? _cancellationTokenSource;
-    private double _hlsTargetDuration = 5;
+    private volatile NetworkDataProviderBase? _actualProvider;
+    private bool _initializationFailed;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="NetworkDataProvider" /> class.
+    ///     This begins the process of downloading and preparing the stream.
     /// </summary>
+    /// <param name="engine">The audio engine instance.</param>
+    /// <param name="format">The audio format containing channels and sample rate and sample format</param>
     /// <param name="url">The URL of the audio stream.</param>
-    public NetworkDataProvider(string url)
+    public NetworkDataProvider(AudioEngine engine, AudioFormat format, string url)
     {
-        _url = url ?? throw new ArgumentNullException(nameof(url));
-        SampleRate = AudioEngine.Instance.SampleRate;
         _httpClient = new HttpClient();
-        Initialize();
+        SampleRate = format.SampleRate;
+        _ = InitializeInternalAsync(engine, format, url ?? throw new ArgumentNullException(nameof(url)));
     }
 
     /// <inheritdoc />
-    public int Position
-    {
-        get
-        {
-            lock (_lock)
-            {
-                return _samplePosition;
-            }
-        }
-    }
+    public int Position => _actualProvider?.Position ?? 0;
 
     /// <inheritdoc />
-    public int Length { get; private set; }
+    public int Length => _actualProvider?.Length ?? 0;
 
     /// <inheritdoc />
-    public bool CanSeek { get; private set; }
+    public bool CanSeek => _actualProvider?.CanSeek ?? false;
 
     /// <inheritdoc />
-    public SampleFormat SampleFormat { get; private set; }
+    public SampleFormat SampleFormat => _actualProvider?.SampleFormat ?? SampleFormat.Unknown;
 
     /// <inheritdoc />
     public int SampleRate { get; }
@@ -80,40 +60,50 @@ public sealed class NetworkDataProvider : ISoundDataProvider
     /// <inheritdoc />
     public event EventHandler<PositionChangedEventArgs>? PositionChanged;
 
+    private async Task InitializeInternalAsync(AudioEngine engine, AudioFormat format, string url)
+    {
+        try
+        {
+            var isHls = await IsHlsUrlAsync(url);
+            
+            NetworkDataProviderBase provider = isHls
+                ? new HlsStreamProvider(engine, format, url, _httpClient)
+                : new DirectStreamProvider(engine, format, url, _httpClient);
+
+            await provider.InitializeAsync();
+            
+            // Wire up events from the internal provider to this facade's events
+            provider.EndOfStreamReached += (_, e) => EndOfStreamReached?.Invoke(this, e);
+            provider.PositionChanged += (_, e) => PositionChanged?.Invoke(this, e);
+
+            // The provider is ready, assign it. This is the "go-live" signal.
+            _actualProvider = provider;
+        }
+        catch
+        {
+            // If anything fails during initialization, mark it and clean up.
+            _initializationFailed = true;
+            EndOfStreamReached?.Invoke(this, EventArgs.Empty);
+            Dispose();
+        }
+    }
+
     /// <inheritdoc />
     public int ReadBytes(Span<float> buffer)
     {
         if (IsDisposed) return 0;
-
-        var samplesRead = 0;
-        var attempts = 0;
-        const int maxAttempts = 50; // ~5 seconds at 100ms intervals
-
-        lock (_lock)
+        
+        // Return 0 if the provider isn't ready yet, or initialization failed, to supply silence until the stream is ready.
+        if (_actualProvider == null)
         {
-            while (samplesRead < buffer.Length && attempts < maxAttempts)
+            if (_initializationFailed)
             {
-                if (_audioBuffer.Count == 0)
-                {
-                    if (_isEndOfStream)
-                    {
-                        if (samplesRead == 0)
-                            EndOfStreamReached?.Invoke(this, EventArgs.Empty);
-                        break;
-                    }
-
-                    attempts++;
-                    Monitor.Wait(_lock, TimeSpan.FromMilliseconds(100));
-                    continue;
-                }
-
-                buffer[samplesRead++] = _audioBuffer.Dequeue();
+                EndOfStreamReached?.Invoke(this, EventArgs.Empty);
             }
-
-            _samplePosition += samplesRead;
-            PositionChanged?.Invoke(this, new PositionChangedEventArgs(_samplePosition));
-            return samplesRead;
+            return 0;
         }
+        
+        return _actualProvider.ReadBytes(buffer);
     }
 
     /// <inheritdoc />
@@ -121,33 +111,33 @@ public sealed class NetworkDataProvider : ISoundDataProvider
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
 
-        if (!CanSeek)
-            throw new NotSupportedException("Seeking is not supported for this stream.");
-
-        lock (_lock)
-        {
-            if (_isHlsStream)
-                SeekInHlsStream(sampleOffset);
-            else
-                SeekInDirectStream(sampleOffset);
-        }
+        if (_actualProvider != null)
+            _actualProvider.Seek(sampleOffset);
+        else // If called before initialization, seeking is not yet supported.
+            throw new InvalidOperationException("Cannot seek: The stream is not yet initialized.");
     }
-
-    private async void Initialize()
+    
+    /// <inheritdoc />
+    public void Dispose()
     {
-        _isHlsStream = await IsHlsUrlAsync(_url);
-        if (_isHlsStream)
-            InitializeHlsStream();
-        else
-            InitializeDirectStream();
+        if (IsDisposed) return;
+        
+        IsDisposed = true;
+        _actualProvider?.Dispose();
+        _httpClient.Dispose();
+        GC.SuppressFinalize(this);
     }
-
-    private async Task<bool> IsHlsUrlAsync(string url)
+    
+    private static async Task<bool> IsHlsUrlAsync(string url)
     {
         try
         {
+            if (url.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase) || url.EndsWith(".m3u", StringComparison.OrdinalIgnoreCase)) return true;
+
             var request = new HttpRequestMessage(HttpMethod.Head, url);
-            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            // Use a new temp client for this static check to not interfere with the instance client's lifecycle
+            using var client = new HttpClient();
+            var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
 
             if (response is { IsSuccessStatusCode: true, Content.Headers.ContentType: not null })
             {
@@ -159,32 +149,30 @@ public sealed class NetworkDataProvider : ISoundDataProvider
                     return true;
             }
 
-            if (url.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase) ||
-                url.EndsWith(".m3u", StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            var content = await DownloadPartialContentAsync(url, 1024);
-            if (content != null)
-            {
-                if (content.Contains("#EXTM3U", StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
+            var content = await DownloadPartialContentAsync(client, url, 1024);
+            return content != null && content.Contains("#EXT", StringComparison.OrdinalIgnoreCase);
         }
         catch
         {
-            // Ignore exceptions and default to false
+            return false;
         }
-
-        return false;
     }
-
-    private async Task<string?> DownloadPartialContentAsync(string url, int byteCount)
+    
+    private static async Task<string?> DownloadPartialContentAsync(HttpClient client, string url, int byteCount)
     {
         try
         {
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Range = new RangeHeaderValue(0, byteCount - 1);
-            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            
+            // If the server doesn't support partial content or playlist file is too small, retry with the full content
+            if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
+            {
+                request = new HttpRequestMessage(HttpMethod.Get, url);
+                response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            }
+            
             response.EnsureSuccessStatusCode();
 
             await using var stream = await response.Content.ReadAsStreamAsync();
@@ -197,232 +185,263 @@ public sealed class NetworkDataProvider : ISoundDataProvider
             return null;
         }
     }
+}
 
-    private void InitializeDirectStream()
+/// <summary>
+///     Internal abstract base class for network providers.
+/// </summary>
+internal abstract class NetworkDataProviderBase(AudioEngine engine, AudioFormat format, string url, HttpClient client)
+    : ISoundDataProvider
+{
+    protected readonly AudioEngine Engine = engine;
+    protected readonly AudioFormat Format = format;
+    protected readonly string Url = url;
+    protected readonly HttpClient HttpClient = client;
+    protected readonly object Lock = new();
+    protected int SamplePosition;
+
+    public abstract Task InitializeAsync();
+    
+    public abstract int ReadBytes(Span<float> buffer);
+    public abstract void Seek(int sampleOffset);
+
+    public int Position
     {
-        Task.Run(async () =>
+        get
         {
-            try
+            lock (Lock)
             {
-                var request = new HttpRequestMessage(HttpMethod.Get, _url);
-                var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
-                response.EnsureSuccessStatusCode();
-
-                CanSeek = response.Headers.AcceptRanges.Contains("bytes");
-
-                // 2. Conditional Length Retrieval
-                // TODO: Find a more accurate way to get the stream length without the decoder or downloading the whole stream or this
-                if (response.Content.Headers.ContentLength is > 0)
-                {
-                    try
-                    {
-                        // Download a small chunk (e.g., first 256KB) for temporary decoder
-                        var partialContentRequest = new HttpRequestMessage(HttpMethod.Get, _url);
-                        partialContentRequest.Headers.Range = new RangeHeaderValue(0,
-                            Math.Min(response.Content.Headers.ContentLength.Value, 256 * 1024) -
-                            1); // Request up to 256KB
-                        var partialContentResponse = await _httpClient.SendAsync(partialContentRequest,
-                            HttpCompletionOption.ResponseContentRead);
-                        partialContentResponse.EnsureSuccessStatusCode();
-
-                        await using var partialContentStream = await partialContentResponse.Content.ReadAsStreamAsync();
-                        var buffer = new byte[partialContentStream.Length];
-                        _ = await partialContentStream.ReadAsync(buffer);
-
-                        var offset = buffer.Length / 2;
-                        var chunkToRepeat = new ReadOnlyMemory<byte>(buffer, offset, buffer.Length - offset);
-                        await using var tempStream = new MemoryStream();
-                        await tempStream.WriteAsync(chunkToRepeat);
-
-                        while (tempStream.Length < response.Content.Headers.ContentLength.Value)
-                        {
-                            await tempStream.WriteAsync(chunkToRepeat);
-                            if (tempStream.Length >= response.Content.Headers.ContentLength.Value)
-                            {
-                                tempStream.SetLength(response.Content.Headers.ContentLength.Value);
-                                break;
-                            }
-                        }
-
-                        tempStream.Position = 0;
-
-                        using var tempDecoder = AudioEngine.Instance.CreateDecoder(tempStream);
-                        Length = tempDecoder.Length;
-                    }
-                    catch
-                    {
-                        Length = -1;
-                    }
-                }
-                else
-                {
-                    Length = -1;
-                }
-
-
-                var networkStream = await response.Content.ReadAsStreamAsync();
-                _stream = new MemoryStream();
-                await networkStream.CopyToAsync(_stream);
-                _stream.Position = 0;
-
-                _decoder = AudioEngine.Instance.CreateDecoder(_stream);
-                SampleFormat = _decoder.SampleFormat;
-
-                _cancellationTokenSource = new CancellationTokenSource();
-                _contentLength = response.Content.Headers.ContentLength;
-                _ = Task.Run(() => BufferDirectStreamAsync(_cancellationTokenSource.Token));
+                return SamplePosition;
             }
-            catch
+        }
+    }
+    
+    public int Length { get; protected set; }
+    public bool CanSeek { get; protected set; }
+    public SampleFormat SampleFormat { get; protected set; }
+    public int SampleRate { get; } = format.SampleRate;
+    public bool IsDisposed { get; private set; }
+
+    public event EventHandler<EventArgs>? EndOfStreamReached;
+    public event EventHandler<PositionChangedEventArgs>? PositionChanged;
+
+    protected virtual void OnEndOfStreamReached() => EndOfStreamReached?.Invoke(this, EventArgs.Empty);
+    protected virtual void OnPositionChanged(int newPosition) => PositionChanged?.Invoke(this, new PositionChangedEventArgs(newPosition));
+
+    public virtual void Dispose()
+    {
+        if (IsDisposed) return;
+        IsDisposed = true;
+    }
+}
+
+/// <summary>
+///     Handles direct audio streams (e.g., MP3, WAV, OGG files).
+/// </summary>
+internal sealed class DirectStreamProvider(AudioEngine engine, AudioFormat format, string url, HttpClient client)
+    : NetworkDataProviderBase(engine, format, url, client)
+{
+    private ISoundDecoder? _decoder;
+    private Stream? _stream;
+    
+    // Files smaller than 50 MB will be downloaded to memory to allow seeking.
+    private const long MaxMemoryDownloadSize = 50 * 1024 * 1024;
+
+    public override async Task InitializeAsync()
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, Url);
+        var response = await HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
+
+        var contentLength = response.Content.Headers.ContentLength;
+
+        // Download to memory if we know the content length, and it's smaller than the threshold.
+        if (contentLength is < MaxMemoryDownloadSize)
+        {
+            using (response)
             {
-                lock (_lock)
-                {
-                    _isEndOfStream = true;
-                    Monitor.PulseAll(_lock);
-                }
+                var ms = new MemoryStream();
+                await response.Content.CopyToAsync(ms);
+                ms.Position = 0;
+                _stream = ms;
             }
-        });
+        }
+        else
+        {
+            // Otherwise, use the live network stream. Seeking will not be supported in this case.
+            _stream = await response.Content.ReadAsStreamAsync();
+        }
+        
+        _decoder = Engine.CreateDecoder(_stream, Format);
+        SampleFormat = _decoder.SampleFormat;
+        Length = _decoder.Length;
+        CanSeek = _stream.CanSeek;
     }
 
-    private void InitializeHlsStream()
+    public override int ReadBytes(Span<float> buffer)
+    {
+        if (IsDisposed || _decoder == null) return 0;
+        
+        var samplesRead = _decoder.Decode(buffer);
+        if (samplesRead == 0)
+        {
+            OnEndOfStreamReached();
+        }
+        else
+        {
+            lock (Lock)
+            {
+                SamplePosition += samplesRead;
+                OnPositionChanged(SamplePosition);
+            }
+        }
+        return samplesRead;
+    }
+
+    public override void Seek(int sampleOffset)
+    {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        if (!CanSeek) throw new NotSupportedException("Seeking is not supported for this stream.");
+        if (_decoder == null) return;
+        lock (Lock)
+        {
+            _decoder.Seek(sampleOffset);
+            SamplePosition = sampleOffset;
+            OnPositionChanged(SamplePosition);
+        }
+    }
+
+    public override void Dispose()
+    {
+        if (IsDisposed) return;
+        lock(Lock)
+        {
+            if (IsDisposed) return;
+            base.Dispose();
+            _decoder?.Dispose();
+            _stream?.Dispose();
+        }
+    }
+}
+
+/// <summary>
+///     Handles HLS (HTTP Live Streaming) playlists (m3u8).
+/// </summary>
+internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat format, string url, HttpClient client)
+    : NetworkDataProviderBase(engine, format, url, client)
+{
+    private class HlsSegment
+    {
+        public string Uri { get; init; } = string.Empty;
+        public double Duration { get; init; }
+    }
+    
+    private readonly Queue<float> _audioBuffer = new();
+    private bool _isEndOfStream;
+    private CancellationTokenSource? _cancellationTokenSource;
+
+    private readonly List<HlsSegment> _hlsSegments = [];
+    private int _currentSegmentIndex;
+    private bool _isEndList;
+    private double _hlsTotalDuration;
+    private double _hlsTargetDuration = 5;
+
+    public override async Task InitializeAsync()
     {
         _cancellationTokenSource = new CancellationTokenSource();
-        Task.Run(async () =>
-        {
-            try
-            {
-                await DownloadAndParsePlaylistAsync(_url, _cancellationTokenSource.Token);
-                if (_hlsSegments.Count == 0)
-                {
-                    throw new InvalidOperationException("No segments found in HLS playlist.");
-                }
+        await DownloadAndParsePlaylistAsync(Url, _cancellationTokenSource.Token);
 
-                SampleFormat = SampleFormat.F32;
-                Length = _isEndList ? (int)(_hlsTotalDuration * SampleRate) : -1; // -1 for unknown or infinite stream
-                CanSeek = _isEndList;
-                await BufferHlsStreamAsync(_cancellationTokenSource.Token);
-            }
-            catch
-            {
-                lock (_lock)
-                {
-                    _isEndOfStream = true;
-                    Monitor.PulseAll(_lock);
-                }
-            }
-        });
+        if (_hlsSegments.Count == 0)
+            throw new InvalidOperationException("No segments found in HLS playlist.");
+        
+        SampleFormat = SampleFormat.F32; // Decoded HLS is typically float
+        Length = _isEndList ? (int)(_hlsTotalDuration * SampleRate) : -1;
+        CanSeek = _isEndList;
+
+        // Start background buffering
+        _ = BufferHlsStreamAsync(_cancellationTokenSource.Token);
     }
-
-    private void BufferDirectStreamAsync(CancellationToken cancellationToken)
+    
+    public override int ReadBytes(Span<float> buffer)
     {
-        try
-        {
-            var buffer = ArrayPool<float>.Shared.Rent(8192);
+        if (IsDisposed) return 0;
 
-            try
+        var attempts = 0;
+        const int maxAttempts = 50; // ~5 seconds at 100ms intervals
+        var samplesRead = 0;
+
+        lock (Lock)
+        {
+            while (samplesRead < buffer.Length && attempts < maxAttempts)
             {
-                while (!IsDisposed && !cancellationToken.IsCancellationRequested)
+                if (_audioBuffer.Count > 0)
                 {
-                    var samplesRead = _decoder!.Decode(buffer);
-
-                    if (samplesRead > 0)
-                    {
-                        lock (_lock)
-                        {
-                            for (var i = 0; i < samplesRead; i++)
-                            {
-                                _audioBuffer.Enqueue(buffer[i]);
-                            }
-
-                            Monitor.PulseAll(_lock);
-                        }
-                    }
-                    else
-                    {
-                        lock (_lock)
-                        {
-                            _isEndOfStream = true;
-                            Monitor.PulseAll(_lock);
-                        }
-
-                        break;
-                    }
+                    buffer[samplesRead++] = _audioBuffer.Dequeue();
                 }
-            }
-            finally
-            {
-                ArrayPool<float>.Shared.Return(buffer);
-            }
-        }
-        catch
-        {
-            lock (_lock)
-            {
-                _isEndOfStream = true;
-                Monitor.PulseAll(_lock);
-            }
-        }
-    }
-
-    private async Task DownloadAndParsePlaylistAsync(string url, CancellationToken cancellationToken)
-    {
-        var response = await _httpClient.GetAsync(url, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        var content = await response.Content.ReadAsStringAsync(cancellationToken);
-        ParseHlsPlaylist(content, url);
-    }
-
-    private void ParseHlsPlaylist(string playlistContent, string baseUrl)
-    {
-        var lines = playlistContent.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-
-        double segmentDuration = 0;
-        _hlsSegments.Clear();
-        _hlsTotalDuration = 0;
-        _isEndList = false;
-        _hlsTargetDuration = 5;
-
-        foreach (var line in lines)
-        {
-            var trimmedLine = line.Trim();
-
-            if (trimmedLine.StartsWith("#EXT-X-TARGETDURATION", StringComparison.OrdinalIgnoreCase))
-            {
-                var durationStr = trimmedLine["#EXT-X-TARGETDURATION:".Length..];
-                if (double.TryParse(durationStr, out var duration))
-                    _hlsTargetDuration = duration;
-            }
-            else if (trimmedLine.StartsWith("#EXTINF", StringComparison.OrdinalIgnoreCase))
-            {
-                var durationStr = trimmedLine["#EXTINF:".Length..].Split(',')[0];
-                if (double.TryParse(durationStr, out var duration))
-                    segmentDuration = duration;
+                else if (_isEndOfStream)
+                {
+                    if (samplesRead == 0)
+                        OnEndOfStreamReached();
+                    break;
+                }
                 else
-                    segmentDuration = 0;
-            }
-            else if (trimmedLine.StartsWith("#EXT-X-ENDLIST", StringComparison.OrdinalIgnoreCase))
-            {
-                _isEndList = true;
-            }
-            else if (!trimmedLine.StartsWith('#'))
-            {
-                var segmentUri = CombineUri(baseUrl, trimmedLine);
-                _hlsSegments.Add(new HlsSegment
                 {
-                    Uri = segmentUri,
-                    Duration = segmentDuration
-                });
-                _hlsTotalDuration += segmentDuration;
-                segmentDuration = 0;
+                    attempts++;
+                    Monitor.Wait(Lock, TimeSpan.FromMilliseconds(100));
+                }
             }
         }
+        
+        if (samplesRead > 0)
+        {
+            lock (Lock)
+            {
+                SamplePosition += samplesRead;
+                OnPositionChanged(SamplePosition);
+            }
+        }
+    
+        return samplesRead;
     }
-
-    private static string CombineUri(string baseUri, string relativeUri)
+    
+    public override void Seek(int sampleOffset)
     {
-        if (!Uri.TryCreate(baseUri, UriKind.Absolute, out var baseUriObj)) return relativeUri;
-        return Uri.TryCreate(baseUriObj, relativeUri, out var newUri) ? newUri.ToString() : relativeUri;
-    }
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
 
+        if (!CanSeek)
+            throw new NotSupportedException("Seeking is not supported for this stream.");
+
+        var targetTime = sampleOffset / (double)SampleRate;
+        double cumulativeTime = 0;
+        var newSegmentIndex = 0;
+        foreach (var segment in _hlsSegments)
+        {
+            if (cumulativeTime + segment.Duration >= targetTime)
+                break;
+            
+            cumulativeTime += segment.Duration;
+            newSegmentIndex++;
+        }
+
+        if (newSegmentIndex >= _hlsSegments.Count)
+            newSegmentIndex = _hlsSegments.Count > 0 ? _hlsSegments.Count - 1 : 0;
+        
+        lock (Lock)
+        {
+            _cancellationTokenSource?.Cancel();
+            _cancellationTokenSource?.Dispose();
+            _cancellationTokenSource = new CancellationTokenSource();
+            
+            _audioBuffer.Clear();
+            _isEndOfStream = false;
+            SamplePosition = sampleOffset;
+            _currentSegmentIndex = newSegmentIndex;
+            
+            _ = BufferHlsStreamAsync(_cancellationTokenSource.Token);
+            OnPositionChanged(SamplePosition);
+        }
+    }
+    
     private async Task BufferHlsStreamAsync(CancellationToken cancellationToken)
     {
         try
@@ -431,8 +450,7 @@ public sealed class NetworkDataProvider : ISoundDataProvider
             {
                 if (!_isEndList && ShouldRefreshPlaylist())
                 {
-                    _lastPlaylistRefreshTime = DateTime.UtcNow;
-                    await DownloadAndParsePlaylistAsync(_url, cancellationToken);
+                    await DownloadAndParsePlaylistAsync(Url, cancellationToken);
                 }
 
                 if (_currentSegmentIndex < _hlsSegments.Count)
@@ -443,228 +461,147 @@ public sealed class NetworkDataProvider : ISoundDataProvider
                 }
                 else if (_isEndList)
                 {
-                    lock (_lock)
+                    lock (Lock)
                     {
                         _isEndOfStream = true;
-                        Monitor.PulseAll(_lock);
+                        Monitor.PulseAll(Lock);
                     }
-
-                    EndOfStreamReached?.Invoke(this, EventArgs.Empty);
-                    break;
+                    break; 
                 }
                 else
                 {
-                    await Task.Delay(1000, cancellationToken);
+                    await Task.Delay(TimeSpan.FromSeconds(_hlsTargetDuration / 2), cancellationToken);
                 }
             }
         }
+        catch (OperationCanceledException) { /* Expected on seek/dispose */ }
         catch
         {
-            lock (_lock)
+            lock (Lock)
             {
                 _isEndOfStream = true;
-                Monitor.PulseAll(_lock);
+                Monitor.PulseAll(Lock);
+            }
+        }
+    }
+    
+    private bool ShouldRefreshPlaylist()
+    {
+        if (_isEndList) return false;
+        var timeUntilEnd = _hlsSegments.Skip(_currentSegmentIndex).Sum(s => s.Duration);
+        return timeUntilEnd < _hlsTargetDuration * 1.5; // Refresh if we have less than 1.5 segments left
+    }
+    
+    private async Task DownloadAndBufferSegmentAsync(HlsSegment segment, CancellationToken cancellationToken)
+    {
+        using var response = await HttpClient.GetAsync(segment.Uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        await using var segmentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var decoder = Engine.CreateDecoder(segmentStream, Format);
+
+        var buffer = ArrayPool<float>.Shared.Rent(8192);
+        try
+        {
+            while (!IsDisposed && !cancellationToken.IsCancellationRequested)
+            {
+                var samplesRead = decoder.Decode(buffer);
+                if (samplesRead <= 0) break;
+
+                lock (Lock)
+                {
+                    for (var i = 0; i < samplesRead; i++)
+                        _audioBuffer.Enqueue(buffer[i]);
+                    Monitor.PulseAll(Lock);
+                }
             }
         }
         finally
         {
-            DisposeResources();
+            ArrayPool<float>.Shared.Return(buffer);
+        }
+    }
+    
+    private async Task DownloadAndParsePlaylistAsync(string playlistUrl, CancellationToken cancellationToken)
+    {
+        var response = await HttpClient.GetAsync(playlistUrl, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        
+        lock (Lock)
+        {
+            ParseHlsPlaylist(content, playlistUrl);
         }
     }
 
-    private bool ShouldRefreshPlaylist()
+    private void ParseHlsPlaylist(string playlistContent, string baseUrl)
     {
-        if (_isEndList)
-            return false;
+        var lines = playlistContent.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var newSegments = new List<HlsSegment>();
+        var newTotalDuration = 0.0;
+        
+        double segmentDuration = 0;
 
-        var elapsed = DateTime.UtcNow - _lastPlaylistRefreshTime;
-        // Refresh the playlist a bit before the target duration to be safe (e.g., 80% of target duration)
-        var refreshInterval = TimeSpan.FromSeconds(_hlsTargetDuration * 0.8);
-        return elapsed >= refreshInterval;
-    }
-
-    private async Task DownloadAndBufferSegmentAsync(HlsSegment segment, CancellationToken cancellationToken)
-    {
-        try
+        foreach (var line in lines)
         {
-            var response = await _httpClient.GetAsync(segment.Uri, HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken);
+            var trimmedLine = line.Trim();
+            if (string.IsNullOrEmpty(trimmedLine)) continue;
 
-            response.EnsureSuccessStatusCode();
-
-            await using var segmentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-
-            if (_decoder == null)
+            if (trimmedLine.StartsWith("#EXT-X-TARGETDURATION", StringComparison.OrdinalIgnoreCase))
             {
-                _decoder = AudioEngine.Instance.CreateDecoder(segmentStream);
-                SampleFormat = _decoder.SampleFormat;
+                if (double.TryParse(trimmedLine["#EXT-X-TARGETDURATION:".Length..], out var duration))
+                    _hlsTargetDuration = duration;
             }
-
-            var buffer = ArrayPool<float>.Shared.Rent(8192);
-
-            try
+            else if (trimmedLine.StartsWith("#EXTINF", StringComparison.OrdinalIgnoreCase))
             {
-                while (!IsDisposed && !cancellationToken.IsCancellationRequested)
-                {
-                    var samplesRead = _decoder.Decode(buffer);
-
-                    if (samplesRead > 0)
-                    {
-                        lock (_lock)
-                        {
-                            for (var i = 0; i < samplesRead; i++)
-                            {
-                                _audioBuffer.Enqueue(buffer[i]);
-                            }
-
-                            Monitor.PulseAll(_lock);
-                        }
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
+                if (double.TryParse(trimmedLine["#EXTINF:".Length..].Split(',')[0], out var duration))
+                    segmentDuration = duration;
             }
-            finally
+            else if (trimmedLine.StartsWith("#EXT-X-ENDLIST", StringComparison.OrdinalIgnoreCase))
             {
-                ArrayPool<float>.Shared.Return(buffer);
+                _isEndList = true;
+            }
+            else if (!trimmedLine.StartsWith('#'))
+            {
+                var segmentUri = CombineUri(baseUrl, trimmedLine);
+                newSegments.Add(new HlsSegment { Uri = segmentUri, Duration = segmentDuration });
+                newTotalDuration += segmentDuration;
             }
         }
-        catch
+
+        if (!_isEndList)
         {
-            // ignored
-        }
-    }
-
-    private async void SeekInDirectStream(int sampleOffset)
-    {
-        try
-        {
-            if (_decoder == null || _stream == null) return;
-            if (!CanSeek || !_contentLength.HasValue || Length <= 0) return;
-
-            var timeProportion = (float)sampleOffset / Length;
-            var targetByteOffset = (long)(timeProportion * _contentLength.Value);
-            targetByteOffset = Math.Max(0, targetByteOffset);
-            targetByteOffset = Math.Min(targetByteOffset, _contentLength.Value - 1);
-
-
-            if (sampleOffset < _samplePosition) // Backward Seek
+            var existingUris = new HashSet<string>(_hlsSegments.Select(s => s.Uri));
+            var segmentsToAdd = newSegments.Where(s => !existingUris.Contains(s.Uri)).ToList();
+            if (segmentsToAdd.Count != 0)
             {
-                _stream.Seek(targetByteOffset, SeekOrigin.Begin);
-                _decoder.Seek(sampleOffset);
-                _samplePosition = sampleOffset;
-                _audioBuffer.Clear();
-                PositionChanged?.Invoke(this, new PositionChangedEventArgs(_samplePosition));
+                _hlsSegments.AddRange(segmentsToAdd);
+                _hlsTotalDuration += segmentsToAdd.Sum(s => s.Duration);
             }
-            else // Forward Seek (or same position)
-            {
-                if (targetByteOffset >= _stream.Length)
-                {
-                    var currentStreamLength = _stream.Length;
-                    var endByteToFetch = Math.Min(targetByteOffset + 1024 * 1024,
-                        _contentLength.GetValueOrDefault(long.MaxValue) - 1);
-                    if (endByteToFetch < currentStreamLength) endByteToFetch = currentStreamLength + (1024 * 1024);
-
-                    using (var rangeRequest = new HttpRequestMessage(HttpMethod.Get, _url))
-                    {
-                        rangeRequest.Headers.Range = new RangeHeaderValue(currentStreamLength, endByteToFetch);
-
-                        using (var rangeResponse = await _httpClient.SendAsync(rangeRequest, HttpCompletionOption.ResponseContentRead))
-                        {
-                            rangeResponse.EnsureSuccessStatusCode();
-                            await using (var contentStream = await rangeResponse.Content.ReadAsStreamAsync())
-                            {
-                                await contentStream.CopyToAsync(_stream);
-                            }
-                        }
-                    }
-
-                    _stream.Position = targetByteOffset;
-                    _decoder.Seek(sampleOffset);
-                    _samplePosition = sampleOffset;
-                    _audioBuffer.Clear();
-                    PositionChanged?.Invoke(this, new PositionChangedEventArgs(_samplePosition));
-                }
-                else // Forward seek within current stream (or backward seek, if the condition is not met)
-                {
-                    _stream.Seek(targetByteOffset, SeekOrigin.Begin);
-                    _decoder.Seek(sampleOffset);
-                    _samplePosition = sampleOffset;
-                    _audioBuffer.Clear();
-                    PositionChanged?.Invoke(this, new PositionChangedEventArgs(_samplePosition));
-                }
-            }
-
-            _ = Task.Run(() => BufferDirectStreamAsync(CancellationToken.None));
         }
-        catch
+        else
         {
-            _isEndOfStream = true;
-            Monitor.PulseAll(_lock);
+            _hlsSegments.Clear();
+            _hlsSegments.AddRange(newSegments);
+            _hlsTotalDuration = newTotalDuration;
         }
     }
-
-    private void SeekInHlsStream(int sampleOffset)
+    
+    private static string CombineUri(string baseUri, string relativeUri)
     {
-        var targetTime = sampleOffset / (double)SampleRate;
-
-        double cumulativeTime = 0;
-        var index = 0;
-        foreach (var segment in _hlsSegments)
-        {
-            cumulativeTime += segment.Duration;
-            if (cumulativeTime >= targetTime)
-                break;
-
-            index++;
-        }
-
-        if (index >= _hlsSegments.Count)
-            index = _hlsSegments.Count - 1;
-
-        _currentSegmentIndex = index;
-
-        lock (_lock)
-        {
-            _decoder?.Dispose();
-            _audioBuffer.Clear();
-            _samplePosition = sampleOffset;
-            PositionChanged?.Invoke(this, new PositionChangedEventArgs(_samplePosition));
-        }
-
-        _cancellationTokenSource?.Cancel(false);
-        _cancellationTokenSource = new CancellationTokenSource();
-        Task.Run(async () => { await BufferHlsStreamAsync(_cancellationTokenSource.Token); });
+        return Uri.TryCreate(new Uri(baseUri), relativeUri, out var newUri) ? newUri.ToString() : relativeUri;
     }
-
-    private void DisposeResources()
+    
+    public override void Dispose()
     {
-        _decoder?.Dispose();
-        _stream?.Dispose();
-        _cancellationTokenSource?.Cancel(false);
-        _cancellationTokenSource?.Dispose();
-    }
-
-    /// <inheritdoc />
-    public void Dispose()
-    {
-        if (IsDisposed)
-            return;
-
-        lock (_lock)
+        if (IsDisposed) return;
+        lock (Lock)
         {
-            IsDisposed = true;
-            _httpClient.Dispose();
-            DisposeResources();
+            if (IsDisposed) return;
+            base.Dispose();
+            _cancellationTokenSource?.Cancel();
+            _cancellationTokenSource?.Dispose();
             _audioBuffer.Clear();
         }
-    }
-
-    private class HlsSegment
-    {
-        public string Uri { get; init; } = string.Empty;
-        public double Duration { get; init; }
     }
 }

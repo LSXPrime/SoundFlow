@@ -7,7 +7,9 @@ namespace SoundFlow.Backends.MiniAudio;
 
 internal static unsafe partial class Native
 {
-    private const string LibraryName = "miniaudio"; 
+    private const string LibraryName = "miniaudio";
+    
+    #region Delegates
     
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void AudioCallback(nint device, nint output, nint input, uint length);
@@ -22,6 +24,10 @@ internal static unsafe partial class Native
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate Result SeekCallback(nint pDecoder, long byteOffset, SeekPoint origin);
+    
+    #endregion
+    
+    #region Initialization
     
     static Native()
     {
@@ -152,6 +158,8 @@ internal static unsafe partial class Native
         }
     }
     
+    #endregion
+    
     #region Encoder
 
     [LibraryImport(LibraryName, EntryPoint = "ma_encoder_init", StringMarshalling = StringMarshalling.Utf8)]
@@ -238,8 +246,7 @@ internal static unsafe partial class Native
         uint sampleRate);
 
     [LibraryImport(LibraryName, EntryPoint = "sf_allocate_device_config")]
-    public static partial nint AllocateDeviceConfig(Capability capabilityType, SampleFormat format, uint channels,
-        uint sampleRate, AudioCallback dataCallback, nint playbackDevice, nint captureDevice);
+    public static partial nint AllocateDeviceConfig(Capability capabilityType, uint sampleRate, AudioCallback dataCallback, nint pSfConfig);
 
     #endregion
 
@@ -247,6 +254,9 @@ internal static unsafe partial class Native
 
     [LibraryImport(LibraryName, EntryPoint = "sf_free")]
     public static partial void Free(nint ptr);
+    
+    [LibraryImport(LibraryName, EntryPoint = "sf_free_device_infos")]
+    public static partial void FreeDeviceInfos(nint deviceInfos, uint count);
 
     #endregion
 }

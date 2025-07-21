@@ -23,6 +23,16 @@ public interface ISoundDecoder : IDisposable
     ///     Gets the format of the audio samples.
     /// </summary>
     SampleFormat SampleFormat { get; }
+    
+    /// <summary>
+    /// Gets the number of channels in the decoded audio.
+    /// </summary>
+    int Channels { get; }
+
+    /// <summary>
+    /// Gets the sample rate of the decoded audio.
+    /// </summary>
+    int SampleRate { get; }
 
     /// <summary>
     ///     Seeks the decoder to a desired sample position from the beginning of the audio data.

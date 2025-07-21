@@ -1,4 +1,5 @@
 ﻿using SoundFlow.Abstracts;
+using SoundFlow.Structs;
 
 namespace SoundFlow.Modifiers;
 
@@ -8,23 +9,26 @@ namespace SoundFlow.Modifiers;
 public class FrequencyBandModifier : SoundModifier
 {
     private readonly LowPassModifier _lowPass;
-    private readonly HighPassFilter _highPass;
+    private readonly HighPassModifier _highPass;
+    private readonly AudioFormat _format;
 
     /// <summary>
     /// Constructs a new instance of <see cref="FrequencyBandModifier"/>.
     /// </summary> 
+    /// <param name="format">The audio format to process.</param>
     /// <param name="lowCutoffFrequency">The low cutoff frequency in Hertz.</param>
     /// <param name="highCutoffFrequency">The high cutoff frequency in Hertz.</param>
-    public FrequencyBandModifier(float lowCutoffFrequency, float highCutoffFrequency)
+    public FrequencyBandModifier(AudioFormat format, float lowCutoffFrequency, float highCutoffFrequency)
     {
-        _highPass = new HighPassFilter(lowCutoffFrequency);
-        _lowPass = new LowPassModifier(highCutoffFrequency);
+        _format = format; // Store the format
+        _highPass = new HighPassModifier(format, lowCutoffFrequency);
+        _lowPass = new LowPassModifier(format, highCutoffFrequency);
     }
 
     /// <summary>
     /// Gets or sets the high cutoff frequency in Hertz.
     /// </summary>
-    /// <value>This value ranges from 0.0 to <see cref="AudioEngine.SampleRate"/>.</value>
+    /// <value>This value ranges from 0.0 to <see cref="AudioFormat.SampleRate"/>.</value>
     public float HighCutoffFrequency
     {
         get => _lowPass.CutoffFrequency;
@@ -34,7 +38,7 @@ public class FrequencyBandModifier : SoundModifier
     /// <summary>
     /// Gets or sets the low cutoff frequency in Hertz.
     /// </summary>
-    /// <value>This value ranges from 0.0 to <see cref="AudioEngine.SampleRate"/>.</value>
+    /// <value>This value ranges from 0.0 to <see cref="AudioFormat.SampleRate"/>.</value>
     public float LowCutoffFrequency
     {
         get => _highPass.CutoffFrequency;

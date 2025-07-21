@@ -1,4 +1,4 @@
-﻿namespace SoundFlow.Enums;
+namespace SoundFlow.Enums;
 
 /// <summary>
 ///     Supported audio encoding formats.

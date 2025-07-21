@@ -1,4 +1,4 @@
-﻿using SoundFlow.Enums;
+using SoundFlow.Enums;
 
 namespace SoundFlow.Exceptions;
 
@@ -19,4 +19,7 @@ public class BackendException(string backendName, Result result, string message)
     ///     The result returned by the audio backend.
     /// </summary>
     public Result Result { get; } = result;
+
+    /// <inheritdoc />
+    public override string ToString() => $"Backend: {Backend}\nResult: {Result}\nMessage: {Message}\nStackTrace: {StackTrace}";
 }

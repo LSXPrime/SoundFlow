@@ -1,4 +1,5 @@
-﻿using SoundFlow.Abstracts;
+using SoundFlow.Abstracts;
+using SoundFlow.Structs;
 
 namespace SoundFlow.Components;
 
@@ -42,6 +43,13 @@ public class Oscillator : SoundComponent
         /// </summary>
         Pulse // Optional
     }
+    
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Oscillator"/> class, which generates audio waveforms at a specified frequency and amplitude.
+    /// </summary>
+    /// <param name="engine">The parent audio engine.</param>
+    /// <param name="format">The audio format containing channels and sample rate and sample format</param>
+    public Oscillator(AudioEngine engine, AudioFormat format) : base(engine, format) { }
 
     // Parameters
     /// <summary>
@@ -83,10 +91,10 @@ public class Oscillator : SoundComponent
     public override string Name { get; set; } = "Oscillator";
 
     /// <inheritdoc/>
-    protected override void GenerateAudio(Span<float> buffer)
+    protected override void GenerateAudio(Span<float> buffer, int channels)
     {
         // Calculate the phase increment per sample based on the frequency
-        _phaseIncrement = (float)(2.0 * Math.PI * Frequency / AudioEngine.Instance.SampleRate);
+        _phaseIncrement = (float)(2.0 * Math.PI * Frequency / Format.SampleRate);
 
         for (var i = 0; i < buffer.Length; i++)
         {

@@ -1,4 +1,4 @@
-﻿using SoundFlow.Abstracts;
+using SoundFlow.Abstracts;
 
 namespace SoundFlow.Editing.Persistence;
 
