@@ -7,6 +7,7 @@ using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using SoundFlow.Structs;
 
+
 namespace SoundFlow.Providers;
 
 /// <summary>
@@ -204,6 +205,7 @@ internal abstract class NetworkDataProviderBase(AudioEngine engine, AudioFormat 
     
     public abstract int ReadBytes(Span<float> buffer);
     public abstract void Seek(int sampleOffset);
+    
 
     public int Position
     {
