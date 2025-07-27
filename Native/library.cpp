@@ -36,8 +36,8 @@ MA_API ma_context *sf_allocate_context() {
 
 // Allocate memory for a device configuration struct.
 MA_API ma_device_config *sf_allocate_device_config(const ma_device_type deviceType, const ma_format format,
-                                                   const ma_uint32 channels, const ma_uint32 sampleRate,
-                                                   const ma_device_data_proc dataCallback,
+                                                   const int channels, const int sampleRate,
+                                                   const ma_device_data_proc *dataCallback,
                                                    const ma_device_id *playbackDeviceId,
                                                    const ma_device_id *captureDeviceId) {
     auto *config = sf_create(ma_device_config);
@@ -49,7 +49,7 @@ MA_API ma_device_config *sf_allocate_device_config(const ma_device_type deviceTy
     *config = ma_device_config_init(deviceType);
 
     // Configure device type and callback
-    config->dataCallback = dataCallback;
+    config->dataCallback = *dataCallback;
 
     // Configure to use stereo signed 16 bit audio
     config->sampleRate = sampleRate;
@@ -71,8 +71,8 @@ MA_API ma_device_config *sf_allocate_device_config(const ma_device_type deviceTy
 }
 
 // Allocate memory for a decoder configuration struct.
-MA_API ma_decoder_config *sf_allocate_decoder_config(const ma_format outputFormat, const ma_uint32 outputChannels,
-                                                     const ma_uint32 outputSampleRate) {
+MA_API ma_decoder_config *sf_allocate_decoder_config(const ma_format outputFormat, const int outputChannels,
+                                                     const int outputSampleRate) {
     auto *pConfig = sf_create(ma_decoder_config);
     if (pConfig == nullptr) {
         return nullptr;
@@ -86,7 +86,7 @@ MA_API ma_decoder_config *sf_allocate_decoder_config(const ma_format outputForma
 
 // Allocate memory for an encoder configuration struct.
 MA_API ma_encoder_config *sf_allocate_encoder_config(const ma_encoding_format encodingFormat, const ma_format format,
-                                                     const ma_uint32 channels, const ma_uint32 sampleRate) {
+                                                     const int channels, const int sampleRate) {
     auto *pConfig = sf_create(ma_encoder_config);
     if (pConfig == nullptr) {
         return nullptr;

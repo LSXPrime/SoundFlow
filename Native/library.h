@@ -41,17 +41,19 @@ MA_API ma_device *sf_allocate_device();
 MA_API ma_context *sf_allocate_context();
 
 // Allocate memory for a device configuration struct.
-MA_API ma_device_config *sf_allocate_device_config(ma_device_type deviceType, ma_format format, ma_uint32 channels,
-                                                   ma_uint32 sampleRate, ma_device_data_proc dataCallback,
-                                                   const ma_device_id *playbackDeviceId, const ma_device_id *captureDeviceId);
+MA_API ma_device_config *sf_allocate_device_config(const ma_device_type deviceType, const ma_format format,
+                                                       const int channels, const int sampleRate,
+                                                       const ma_device_data_proc *dataCallback,
+                                                       const ma_device_id *playbackDeviceId,
+                                                       const ma_device_id *captureDeviceId);
 
 // Allocate memory for a decoder configuration struct.
-MA_API ma_decoder_config *sf_allocate_decoder_config(ma_format outputFormat, ma_uint32 outputChannels,
-                                                     ma_uint32 outputSampleRate);
+MA_API ma_decoder_config *sf_allocate_decoder_config(ma_format outputFormat, int outputChannels,
+                                                     int outputSampleRate);
 
 // Allocate memory for an encoder configuration struct.
 MA_API ma_encoder_config *sf_allocate_encoder_config(ma_encoding_format encodingFormat, ma_format format,
-                                                     ma_uint32 channels, ma_uint32 sampleRate);
+                                                     int channels, int sampleRate);
 
 MA_API ma_result sf_get_devices(ma_context *context, sf_device_info **ppPlaybackDeviceInfos,
                                 sf_device_info **ppCaptureDeviceInfos, ma_uint32 *pPlaybackDeviceCount,

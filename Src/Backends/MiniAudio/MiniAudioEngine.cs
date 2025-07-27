@@ -32,10 +32,18 @@ public sealed class MiniAudioEngine(
     /// <inheritdoc />
     protected override void InitializeAudioDevice()
     {
+        Console.WriteLine("Allocating context.");
         _context = Native.AllocateContext();
+        
+        Console.WriteLine("Initializing context.");
         var result = (Result)Native.ContextInit(nint.Zero, 0, nint.Zero, _context);
         if (result != Result.Success)
+        {
+            Console.WriteLine("Unable to init context. " + result);
             throw new InvalidOperationException("Unable to init context. " + result);
+        }
+        
+        Console.WriteLine("Context initialized successfully.");
 
         InitializeDeviceInternal(nint.Zero, nint.Zero);
     }
@@ -48,28 +56,44 @@ public sealed class MiniAudioEngine(
 
         _audioCallback ??= AudioCallback;
         
+        Console.WriteLine("Allocating device config.");
+        
+        // Get Delegate Function Pointer
+        var functionPointer = _audioCallback.Method.MethodHandle.GetFunctionPointer();
+        
         var deviceConfig = Native.AllocateDeviceConfig((int)Capability, (int)SampleFormat, Channels, SampleRate,
             Marshal.GetFunctionPointerForDelegate(_audioCallback),
             playbackDeviceId,
             captureDeviceId);
 
+        Console.WriteLine("Device config allocated successfully, Allocating device.");
+        
         _device = Native.AllocateDevice();
+        
+        Console.WriteLine("Device allocated successfully, initializing device.");
+        
         var result = (Result)Native.DeviceInit(_context, deviceConfig, _device);
         Native.Free(deviceConfig);
 
         if (result != Result.Success)
         {
+            Console.WriteLine("Unable to init device. " + result);
             Native.Free(_device);
             _device = nint.Zero;
             throw new InvalidOperationException($"Unable to init device. {result}");
         }
+        
+        Console.WriteLine("Device initialized successfully, starting device.");
 
         result = (Result)Native.DeviceStart(_device);
         if (result != Result.Success)
         {
+            Console.WriteLine("Unable to start device. " + result);
             CleanupCurrentDevice();
             throw new InvalidOperationException($"Unable to start device. {result}");
         }
+        
+        Console.WriteLine("Device started successfully.");
 
         UpdateDevicesInfo();
         CurrentPlaybackDevice = PlaybackDevices.FirstOrDefault(x => x.Id == playbackDeviceId);
@@ -91,7 +115,7 @@ public sealed class MiniAudioEngine(
     }
 
 
-    private void AudioCallback(IntPtr _, IntPtr output, IntPtr input, uint length)
+    private void AudioCallback(nint _, nint output, nint input, uint length)
     {
         var sampleCount = (int)length * Channels;
         if (Capability != Capability.Record) ProcessGraph(output, sampleCount);

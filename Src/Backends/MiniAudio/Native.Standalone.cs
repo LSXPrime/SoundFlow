@@ -1,6 +1,4 @@
-﻿#define BROWSER
-
-#if !BROWSER
+﻿#if !BROWSER
 using System.Reflection;
 using System.Runtime.InteropServices;
 using SoundFlow.Backends.MiniAudio.Enums;

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-t">
+    <title>My Audio Library Test</title>
+    <style>
+        body { font-family: sans-serif; }
+        pre { background-color: #f4f4f4; padding: 1em; border-radius: 5px; }
+    </style>
+</head>
+<body>
+<h1>Testing the Compiled C++ Audio Library</h1>
+<p>Click the button and check the browser's developer console and this page for output.</p>
+<button id="testButton">List Audio Devices</button>
+<div id="output"></div>
+
+<script type="module">
+    // Import the factory function from the generated glue code
+    import miniaudio from './library.js';
+
+    // This factory function is async and returns a promise that resolves with the module object
+    const myLib = await miniaudio();
+    console.log("WebAssembly module loaded successfully!");
+
+    // --- Accessing the Wasm Module API ---
+    // Now you can access your exported functions via the 'myLib' object.
+    const {
+        _sf_allocate_context,
+        _sf_get_devices,
+        _sf_free,
+        _ma_context_init,
+        _ma_context_uninit,
+        _malloc,
+        _free: _wasm_free, // rename to avoid conflict with window.free
+        HEAPU8,          // Raw memory buffer (Uint8Array view)
+        HEAPU32,         // 32-bit integer view of memory
+        UTF8ToString     // Helper to read C-style strings
+    } = myLib;
+
+    const outputDiv = document.getElementById('output');
+
+    /**
+     * Reads an sf_device_info struct from a given pointer in Wasm memory.
+     * This is a critical part of JS-Wasm interop.
+     * The layout must match the C++ struct *exactly*.
+     *
+     * struct sf_device_info {
+     *   ma_device_id* id;                   // 4 bytes (pointer)
+     *   char name[256];                     // 256 bytes
+     *   bool isDefault;                     // 1 byte (Emscripten uses 1 byte for bool)
+     *   -- 3 bytes padding --               // Compilers often pad structs to 4-byte alignment
+     *   ma_uint32 nativeDataFormatCount;     // 4 bytes
+     *   native_data_format* nativeDataFormats; // 4 bytes (pointer)
+     * };
+     * Total size = 4 + 256 + 1 + 3 + 4 + 4 = 272 bytes
+     */
+    const SIZEOF_SF_DEVICE_INFO = 272;
+    function readDeviceInfo(pDeviceInfo) {
+        const namePtr = pDeviceInfo + 4; // name is at offset 4
+        const isDefaultPtr = pDeviceInfo + 4 + 256; // isDefault is after the name buffer
+        const countPtr = pDeviceInfo + 4 + 256 + 4; // count is after name and isDefault+padding
+
+        const name = UTF8ToString(namePtr);
+        const isDefault = HEAPU8[isDefaultPtr] !== 0;
+        const nativeDataFormatCount = HEAPU32[countPtr / 4];
+
+        return { name, isDefault, nativeDataFormatCount };
+    }
+
+
+    // The main function to run our test
+    function listAudioDevices() {
+        outputDiv.innerHTML = ""; // Clear previous output
+        console.log("Attempting to list audio devices...");
+
+        const pContext = _sf_allocate_context();
+        if (pContext === 0) { // if pContext then fails
+            console.error("Failed to initialize context, error:", result_init);
+            _sf_free(pContext);
+            return;
+        }
+
+        // Prepare pointers to receive the output from sf_get_devices
+        // These are pointers *in our JS code* that will hold addresses *in Wasm memory*.
+        const ppPlaybackDeviceInfos = _malloc(4); // A pointer to a pointer (size is 4 bytes on 32-bit Wasm)
+        const ppCaptureDeviceInfos = _malloc(4);
+        const pPlaybackDeviceCount = _malloc(4);
+        const pCaptureDeviceCount = _malloc(4);
+
+        // Call our exported C++ function
+        const result_get = _sf_get_devices(
+            pContext,
+            ppPlaybackDeviceInfos,
+            ppCaptureDeviceInfos,
+            pPlaybackDeviceCount,
+            pCaptureDeviceCount
+        );
+
+        if (result_get !== 0) {
+            console.error("sf_get_devices failed with code:", result_get);
+        } else {
+            // Read the results back from Wasm memory
+            const playbackCount = HEAPU32[pPlaybackDeviceCount / 4];
+            const captureCount = HEAPU32[pCaptureDeviceCount / 4];
+
+            let html = `<h3>Found ${playbackCount} Playback Devices</h3>`;
+            if (playbackCount > 0) {
+                // Get the address of the *start* of the device array
+                const pFirstPlaybackDevice = HEAPU32[ppPlaybackDeviceInfos / 4];
+                html += "<ul>";
+                for (let i = 0; i < playbackCount; i++) {
+                    // Pointer arithmetic: move to the i-th struct in the array
+                    const pCurrentDevice = pFirstPlaybackDevice + (i * SIZEOF_SF_DEVICE_INFO);
+                    const info = readDeviceInfo(pCurrentDevice);
+                    html += `<li><b>${info.name}</b> ${info.isDefault ? '(Default)' : ''}</li>`;
+                }
+                html += "</ul>";
+            }
+            outputDiv.innerHTML += html;
+
+            // IMPORTANT: Free the device list allocated by sf_get_devices in C++
+            const pPlaybackList = HEAPU32[ppPlaybackDeviceInfos / 4];
+            if(pPlaybackList) _wasm_free(pPlaybackList);
+
+            const pCaptureList = HEAPU32[ppCaptureDeviceInfos / 4];
+            if(pCaptureList) _wasm_free(pCaptureList);
+        }
+
+        // --- Final Cleanup ---
+        _wasm_free(ppPlaybackDeviceInfos);
+        _wasm_free(ppCaptureDeviceInfos);
+        _wasm_free(pPlaybackDeviceCount);
+        _wasm_free(pCaptureDeviceCount);
+
+        _ma_context_uninit(pContext);
+        _sf_free(pContext);
+
+        console.log("Test finished.");
+    }
+
+    document.getElementById('testButton').onclick = listAudioDevices;
+</script>
+</body>
+</html>

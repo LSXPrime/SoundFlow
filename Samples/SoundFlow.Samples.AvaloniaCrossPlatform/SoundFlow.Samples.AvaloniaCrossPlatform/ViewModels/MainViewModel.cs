@@ -61,8 +61,10 @@ public class MainViewModel : ViewModelBase
     {
         try
         {
+            Console.WriteLine("Miniaudio WASM Initialized before Avalonia Initialize.");
             _audioEngine = new MiniAudioEngine(48000, Capability.Playback);
-            Console.WriteLine("Miniaudio WASM Initialized after Avalonia Initialize.");
+            
+            Console.WriteLine("Audio Engine Initialized.");
 
             _soundPlayer = new SoundPlayer(new AssetDataProvider([]));
         }

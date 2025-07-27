@@ -24,23 +24,8 @@
             <img class="icon" src="Logo.svg" alt="Avalonia Logo" />
         </div>
     </div>
-    
-    <!-- Load Miniaudio Glue Code FIRST -->
-    <script src="libminiaudio.js"></script>
+    <script type='module' src="./bootstrapper.js"></script>
     <script type='module' src="./main.js"></script>
-
-    <!-- Initialize Miniaudio Module (needs to happen after libminiaudio.js loads but before .NET tries to use it) -->
-    <script>
-        window.miniaudioPromise = Module();
-        window.miniaudioPromise.then(m => {
-            console.log("Miniaudio WASM Module Initialized");
-            window.miniaudioModule = m; // Store the resolved module globally
-            // Print out Miniaudio object to check if null
-            console.log(`Miniaudio Version: ${window.miniaudioModule}`);
-        }).catch(e => {
-            console.error("Miniaudio WASM Module Failed to Initialize:", e);
-        });
-    </script>
 </body>
 
 </html>

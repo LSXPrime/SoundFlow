@@ -1,5 +1,3 @@
-﻿#define BROWSER
-
 #if BROWSER
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.JavaScript;
@@ -19,7 +17,7 @@ public static partial class Native
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate Result DecoderSeek(nint pDecoder, long byteOffset, SeekPoint origin);
 
-    private const string JsModulePrefix = "globalThis.miniaudioModule._";
+    private const string JsModulePrefix = "globalThis.";
 
     #region Encoder
 
@@ -30,7 +28,7 @@ public static partial class Native
     public static partial void EncoderUninit(nint pEncoder);
 
     [JSImport($"{JsModulePrefix}ma_encoder_write_pcm_frames")]
-    public static partial int EncoderWritePcmFrames(nint pEncoder, nint pFramesIn, int frameCount,
+    public static partial int EncoderWritePcmFrames(nint pEncoder, nint pFramesIn, [JSMarshalAs<JSType.Any>] object frameCount,
         nint pFramesWritten);
 
     #endregion
@@ -45,11 +43,11 @@ public static partial class Native
     public static partial int DecoderUninit(nint pDecoder);
 
     [JSImport($"{JsModulePrefix}ma_decoder_read_pcm_frames")]
-    public static partial int DecoderReadPcmFrames(nint decoder, nint framesOut, int frameCount,
+    public static partial int DecoderReadPcmFrames(nint decoder, nint framesOut, [JSMarshalAs<JSType.Any>] object frameCount,
         nint framesRead);
 
     [JSImport($"{JsModulePrefix}ma_decoder_seek_to_pcm_frame")]
-    public static partial int DecoderSeekToPcmFrame(nint decoder, int frame);
+    public static partial int DecoderSeekToPcmFrame(nint decoder, [JSMarshalAs<JSType.Any>] object frame);
 
     [JSImport($"{JsModulePrefix}ma_decoder_get_length_in_pcm_frames")]
     public static partial int DecoderGetLengthInPcmFrames(nint decoder, nint length);
@@ -59,7 +57,7 @@ public static partial class Native
     #region Context
 
     [JSImport($"{JsModulePrefix}ma_context_init")]
-    public static partial int ContextInit(nint backends, int backendCount, nint config, nint context);
+    public static partial int ContextInit(nint backends, [JSMarshalAs<JSType.Any>]object backendCount, nint config, nint context);
 
     [JSImport($"{JsModulePrefix}ma_context_uninit")]
     public static partial void ContextUninit(nint context);

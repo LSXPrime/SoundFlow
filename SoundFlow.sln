@@ -14,15 +14,15 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.Loopback"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SoundFlow.Samples.AvaloniaCrossPlatofrm", "SoundFlow.Samples.AvaloniaCrossPlatofrm", "{67C39F3C-0239-4119-80C6-A1F82A893847}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.AvaloniaCrossPlatform", "Samples\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform.csproj", "{EFE7160D-23E6-419E-B76B-289DB09C39FA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.AvaloniaCrossPlatform", "Samples\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform.csproj", "{AF3B5AC5-D922-4B82-B627-C745C696BE85}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.AvaloniaCrossPlatform.Android", "Samples\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform.Android\SoundFlow.Samples.AvaloniaCrossPlatform.Android.csproj", "{F398C449-962C-4E5F-85DF-767337E2C3EC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.AvaloniaCrossPlatform.Android", "Samples\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform.Android\SoundFlow.Samples.AvaloniaCrossPlatform.Android.csproj", "{D1E38D93-FD09-4B76-9DF2-16A056985C48}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.AvaloniaCrossPlatform.Desktop", "Samples\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform.Desktop\SoundFlow.Samples.AvaloniaCrossPlatform.Desktop.csproj", "{4BD421CC-F93A-4CDA-A113-8D78DC9E1F6B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.AvaloniaCrossPlatform.Desktop", "Samples\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform.Desktop\SoundFlow.Samples.AvaloniaCrossPlatform.Desktop.csproj", "{3CE9D69C-AEC8-4C68-96CD-6099EAF7B19C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.AvaloniaCrossPlatform.iOS", "Samples\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform.iOS\SoundFlow.Samples.AvaloniaCrossPlatform.iOS.csproj", "{006C14CA-06EA-4FA1-A029-25B0ED1A33EC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.AvaloniaCrossPlatform.iOS", "Samples\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform.iOS\SoundFlow.Samples.AvaloniaCrossPlatform.iOS.csproj", "{2F558606-F929-4978-B1C6-C83C7A7771B5}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.AvaloniaCrossPlatform.Browser", "Samples\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform.Browser\SoundFlow.Samples.AvaloniaCrossPlatform.Browser.csproj", "{A802FC73-F9F6-4E78-A167-FA77D835F1FA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.AvaloniaCrossPlatform.Browser", "Samples\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform.Browser\SoundFlow.Samples.AvaloniaCrossPlatform.Browser.csproj", "{028159EE-BC76-4907-B424-AB754D549678}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -46,26 +46,26 @@ Global
 		{4BE12E30-3895-4C0B-BB52-A18AFDA60CE7}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4BE12E30-3895-4C0B-BB52-A18AFDA60CE7}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4BE12E30-3895-4C0B-BB52-A18AFDA60CE7}.Release|Any CPU.Build.0 = Release|Any CPU
-		{EFE7160D-23E6-419E-B76B-289DB09C39FA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{EFE7160D-23E6-419E-B76B-289DB09C39FA}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{EFE7160D-23E6-419E-B76B-289DB09C39FA}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{EFE7160D-23E6-419E-B76B-289DB09C39FA}.Release|Any CPU.Build.0 = Release|Any CPU
-		{F398C449-962C-4E5F-85DF-767337E2C3EC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{F398C449-962C-4E5F-85DF-767337E2C3EC}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{F398C449-962C-4E5F-85DF-767337E2C3EC}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{F398C449-962C-4E5F-85DF-767337E2C3EC}.Release|Any CPU.Build.0 = Release|Any CPU
-		{4BD421CC-F93A-4CDA-A113-8D78DC9E1F6B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{4BD421CC-F93A-4CDA-A113-8D78DC9E1F6B}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{4BD421CC-F93A-4CDA-A113-8D78DC9E1F6B}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{4BD421CC-F93A-4CDA-A113-8D78DC9E1F6B}.Release|Any CPU.Build.0 = Release|Any CPU
-		{006C14CA-06EA-4FA1-A029-25B0ED1A33EC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{006C14CA-06EA-4FA1-A029-25B0ED1A33EC}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{006C14CA-06EA-4FA1-A029-25B0ED1A33EC}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{006C14CA-06EA-4FA1-A029-25B0ED1A33EC}.Release|Any CPU.Build.0 = Release|Any CPU
-		{A802FC73-F9F6-4E78-A167-FA77D835F1FA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{A802FC73-F9F6-4E78-A167-FA77D835F1FA}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{A802FC73-F9F6-4E78-A167-FA77D835F1FA}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{A802FC73-F9F6-4E78-A167-FA77D835F1FA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AF3B5AC5-D922-4B82-B627-C745C696BE85}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AF3B5AC5-D922-4B82-B627-C745C696BE85}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AF3B5AC5-D922-4B82-B627-C745C696BE85}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AF3B5AC5-D922-4B82-B627-C745C696BE85}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D1E38D93-FD09-4B76-9DF2-16A056985C48}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D1E38D93-FD09-4B76-9DF2-16A056985C48}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D1E38D93-FD09-4B76-9DF2-16A056985C48}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D1E38D93-FD09-4B76-9DF2-16A056985C48}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3CE9D69C-AEC8-4C68-96CD-6099EAF7B19C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3CE9D69C-AEC8-4C68-96CD-6099EAF7B19C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3CE9D69C-AEC8-4C68-96CD-6099EAF7B19C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3CE9D69C-AEC8-4C68-96CD-6099EAF7B19C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2F558606-F929-4978-B1C6-C83C7A7771B5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2F558606-F929-4978-B1C6-C83C7A7771B5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2F558606-F929-4978-B1C6-C83C7A7771B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2F558606-F929-4978-B1C6-C83C7A7771B5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{028159EE-BC76-4907-B424-AB754D549678}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{028159EE-BC76-4907-B424-AB754D549678}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{028159EE-BC76-4907-B424-AB754D549678}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{028159EE-BC76-4907-B424-AB754D549678}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{D4326C2E-CDB3-47D4-8116-BB3872E81323} = {7841F9AA-861F-4684-8DEC-2828FB3AE048}
@@ -73,10 +73,10 @@ Global
 		{46559898-2133-42CD-BE0A-B5FA9A31E737} = {BE06375D-0A93-4916-A551-9875089314CC}
 		{4BE12E30-3895-4C0B-BB52-A18AFDA60CE7} = {BE06375D-0A93-4916-A551-9875089314CC}
 		{67C39F3C-0239-4119-80C6-A1F82A893847} = {BE06375D-0A93-4916-A551-9875089314CC}
-		{EFE7160D-23E6-419E-B76B-289DB09C39FA} = {67C39F3C-0239-4119-80C6-A1F82A893847}
-		{F398C449-962C-4E5F-85DF-767337E2C3EC} = {67C39F3C-0239-4119-80C6-A1F82A893847}
-		{4BD421CC-F93A-4CDA-A113-8D78DC9E1F6B} = {67C39F3C-0239-4119-80C6-A1F82A893847}
-		{006C14CA-06EA-4FA1-A029-25B0ED1A33EC} = {67C39F3C-0239-4119-80C6-A1F82A893847}
-		{A802FC73-F9F6-4E78-A167-FA77D835F1FA} = {67C39F3C-0239-4119-80C6-A1F82A893847}
+		{AF3B5AC5-D922-4B82-B627-C745C696BE85} = {67C39F3C-0239-4119-80C6-A1F82A893847}
+		{D1E38D93-FD09-4B76-9DF2-16A056985C48} = {67C39F3C-0239-4119-80C6-A1F82A893847}
+		{3CE9D69C-AEC8-4C68-96CD-6099EAF7B19C} = {67C39F3C-0239-4119-80C6-A1F82A893847}
+		{2F558606-F929-4978-B1C6-C83C7A7771B5} = {67C39F3C-0239-4119-80C6-A1F82A893847}
+		{028159EE-BC76-4907-B424-AB754D549678} = {67C39F3C-0239-4119-80C6-A1F82A893847}
 	EndGlobalSection
 EndGlobal

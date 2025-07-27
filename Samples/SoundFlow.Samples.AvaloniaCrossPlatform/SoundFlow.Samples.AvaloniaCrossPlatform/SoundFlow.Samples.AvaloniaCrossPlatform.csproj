@@ -20,6 +20,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\..\Src\SoundFlow.csproj" />
+        <ProjectReference Include="..\..\..\Src\SoundFlow.csproj" />
     </ItemGroup>
 </Project>

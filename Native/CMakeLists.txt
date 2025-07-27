@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.26)
 project(miniaudio)
 
-set(CMAKE_CXX_STANDARD 26)
+set(CMAKE_CXX_STANDARD 20)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -83,10 +83,14 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "iOS")
     )
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    # Set output name and type for Emscripten
-    set_target_properties(miniaudio PROPERTIES
-        OUTPUT_NAME "libminiaudio" # Base name for output files (libminiaudio.wasm, libminiaudio.js)
-        SUFFIX ".js"             # Emscripten will generate .js and .wasm
-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" # Output directory for .js and .wasm
+    # Link with emscripten
+    target_link_options(miniaudio PUBLIC
+        "-s SIDE_MODULE=1"
+        "-s USE_PTHREADS=1"
+        "-s EXPORT_ALL=1" # Export all available functions
+        "-s MODULARIZE=1"
+        "-s EXPORT_ES6=1"
+        "-s EXPORT_NAME='miniaudio'"
     )
+
 endif()
