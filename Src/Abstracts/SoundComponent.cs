@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using SoundFlow.Components;
+using SoundFlow.Interfaces;
 using SoundFlow.Structs;
 
 namespace SoundFlow.Abstracts;
@@ -9,26 +10,40 @@ namespace SoundFlow.Abstracts;
 /// <summary>
 ///     Base class for audio processing components.
 /// </summary>
-public abstract class SoundComponent : IDisposable
+public abstract class SoundComponent : IDisposable, IMidiMappable
 {
     private static readonly ArrayPool<float> BufferPool = ArrayPool<float>.Shared;
 
-    // Connection state
-    private readonly List<SoundComponent> _inputs = [];
-    private readonly List<SoundComponent> _outputs = [];
+    // Connection state (Staging for modification)
+    private readonly List<SoundComponent> _inputsStaging = [];
+    private readonly List<SoundComponent> _outputsStaging = [];
     private readonly object _connectionsLock = new();
 
-    // Processing state
-    private readonly List<SoundModifier> _modifiers = [];
-    private readonly List<AudioAnalyzer> _analyzers = [];
+    // Connection snapshots (For audio thread)
+    private volatile SoundComponent[] _inputsSnapshot = [];
+    private volatile SoundComponent[] _outputsSnapshot = [];
+
+    // Processing state (Staging)
+    private readonly List<SoundModifier> _modifiersStaging = [];
+    private readonly List<AudioAnalyzer> _analyzersStaging = [];
+    
+    // Processing snapshots (For audio thread)
+    private volatile SoundModifier[] _modifiersSnapshot = [];
+    private volatile AudioAnalyzer[] _analyzersSnapshot = [];
+    
     private float _pan = 0.5f;
     private bool _solo;
     private float _volume = 1f;
-    private Vector2 _volumePanFactors;
+    
+    // Cached calculations to avoid math in hot path
+    private Vector2 _volumePanFactors; 
     private readonly object _stateLock = new();
 
+    /// <inheritdoc />
+    public Guid Id { get; } = Guid.NewGuid();
+    
     /// <summary>
-    /// 
+    /// Gets a value indicating whether this component has been disposed.
     /// </summary>
     public bool IsDisposed { get; private set; }
 
@@ -77,7 +92,7 @@ public abstract class SoundComponent : IDisposable
     {
         get
         {
-            lock (_connectionsLock) return new List<SoundComponent>(_inputs);
+            lock (_connectionsLock) return new List<SoundComponent>(_inputsStaging);
         }
     }
 
@@ -88,7 +103,7 @@ public abstract class SoundComponent : IDisposable
     {
         get
         {
-            lock (_connectionsLock) return new List<SoundComponent>(_outputs);
+            lock (_connectionsLock) return new List<SoundComponent>(_outputsStaging);
         }
     }
 
@@ -169,7 +184,7 @@ public abstract class SoundComponent : IDisposable
     {
         get
         {
-            lock (_stateLock) return new List<SoundModifier?>(_modifiers);
+            lock (_stateLock) return new List<SoundModifier?>(_modifiersStaging);
         }
     }
 
@@ -180,7 +195,7 @@ public abstract class SoundComponent : IDisposable
     {
         get
         {
-            lock (_stateLock) return new List<AudioAnalyzer>(_analyzers);
+            lock (_stateLock) return new List<AudioAnalyzer>(_analyzersStaging);
         }
     }
 
@@ -229,13 +244,18 @@ public abstract class SoundComponent : IDisposable
         lock (first._connectionsLock)
         lock (second._connectionsLock)
         {
-            if (_inputs.Contains(input)) return;
+            if (_inputsStaging.Contains(input)) return;
 
             if (IsReachable(input, this))
                 throw new InvalidOperationException("Connection would create a cycle");
 
-            _inputs.Add(input);
-            input._outputs.Add(this);
+            // Update Staging
+            _inputsStaging.Add(input);
+            input._outputsStaging.Add(this);
+            
+            // Update Snapshots
+            _inputsSnapshot = _inputsStaging.ToArray();
+            input._outputsSnapshot = input._outputsStaging.ToArray();
         }
     }
 
@@ -254,10 +274,16 @@ public abstract class SoundComponent : IDisposable
 
         lock (_connectionsLock)
         {
-            if (!_inputs.Remove(input)) return;
+            if (!_inputsStaging.Remove(input)) return;
+            // Update Snapshot
+            _inputsSnapshot = _inputsStaging.ToArray();
 
             lock (input._connectionsLock)
-                input._outputs.Remove(this);
+            {
+                input._outputsStaging.Remove(this);
+                // Update Snapshot
+                input._outputsSnapshot = input._outputsStaging.ToArray();
+            }
         }
     }
 
@@ -275,7 +301,7 @@ public abstract class SoundComponent : IDisposable
 
             List<SoundComponent> currentOutputs;
             lock (current._connectionsLock)
-                currentOutputs = [..current._outputs];
+                currentOutputs = [..current._outputsStaging];
 
             foreach (var output in currentOutputs)
                 queue.Enqueue(output);
@@ -294,8 +320,11 @@ public abstract class SoundComponent : IDisposable
         ObjectDisposedException.ThrowIf(IsDisposed, this);
         lock (_stateLock)
         {
-            if (!_modifiers.Contains(modifier))
-                _modifiers.Add(modifier);
+            if (!_modifiersStaging.Contains(modifier))
+            {
+                _modifiersStaging.Add(modifier);
+                _modifiersSnapshot = _modifiersStaging.ToArray();
+            }
         }
     }
 
@@ -308,7 +337,10 @@ public abstract class SoundComponent : IDisposable
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
         lock (_stateLock)
-            _modifiers.Remove(modifier);
+        {
+            if (_modifiersStaging.Remove(modifier))
+                _modifiersSnapshot = _modifiersStaging.ToArray();
+        }
     }
 
     /// <summary>
@@ -321,8 +353,11 @@ public abstract class SoundComponent : IDisposable
         ObjectDisposedException.ThrowIf(IsDisposed, this);
         lock (_stateLock)
         {
-            if (!_analyzers.Contains(analyzer))
-                _analyzers.Add(analyzer);
+            if (!_analyzersStaging.Contains(analyzer))
+            {
+                _analyzersStaging.Add(analyzer);
+                _analyzersSnapshot = _analyzersStaging.ToArray();
+            }
         }
     }
 
@@ -335,7 +370,10 @@ public abstract class SoundComponent : IDisposable
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
         lock (_stateLock)
-            _analyzers.Remove(analyzer);
+        {
+            if (_analyzersStaging.Remove(analyzer))
+                _analyzersSnapshot = _analyzersStaging.ToArray();
+        }
     }
 
     internal void Process(Span<float> outputBuffer, int channels)
@@ -349,28 +387,16 @@ public abstract class SoundComponent : IDisposable
             var workingBuffer = rentedBuffer.AsSpan(0, outputBuffer.Length);
             workingBuffer.Clear();
 
-            SoundComponent[] currentInputs;
-            lock (_connectionsLock)
-            {
-                currentInputs = _inputs.Count == 0 ? [] : _inputs.ToArray();
-            }
+            // Read snapshots
+            var currentInputs = _inputsSnapshot;
+            var currentModifiers = _modifiersSnapshot;
+            var currentAnalyzers = _analyzersSnapshot;
+            var currentVolumePan = _volumePanFactors;
 
             foreach (var input in currentInputs)
                 input.Process(workingBuffer, channels);
 
             GenerateAudio(workingBuffer, channels);
-
-            SoundModifier[] currentModifiers;
-            AudioAnalyzer[] currentAnalyzers;
-            Vector2 currentVolumePan;
-
-            lock (_stateLock)
-            {
-                currentModifiers = _modifiers.Count == 0 ? [] : _modifiers.ToArray();
-                currentAnalyzers = _analyzers.Count == 0 ? [] : _analyzers.ToArray();
-                UpdateVolumePanFactors(channels);
-                currentVolumePan = _volumePanFactors;
-            }
 
             foreach (var modifier in currentModifiers)
                 if (modifier.Enabled)
@@ -579,16 +605,20 @@ public abstract class SoundComponent : IDisposable
             
             lock (_stateLock)
             {
-                _modifiers.Clear();
-                _analyzers.Clear();
+                _modifiersStaging.Clear();
+                _analyzersStaging.Clear();
+                _modifiersSnapshot = [];
+                _analyzersSnapshot = [];
             }
         }
         
-        // Clear connection lists. This is defensive, as they should be empty by now.
+        // Clear connection lists.
         lock (_connectionsLock)
         {
-            _inputs.Clear();
-            _outputs.Clear();
+            _inputsStaging.Clear();
+            _outputsStaging.Clear();
+            _inputsSnapshot = [];
+            _outputsSnapshot = [];
         }
 
         IsDisposed = true;

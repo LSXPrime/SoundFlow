@@ -1,12 +1,14 @@
 using SoundFlow.Abstracts;
+using SoundFlow.Interfaces;
+using SoundFlow.Midi.Abstracts;
 
 namespace SoundFlow.Editing;
 
 /// <summary>
-/// Represents the configurable settings for a <see cref="Track"/>,
+/// Represents the configurable settings for a <see cref="Track"/> or <see cref="MidiTrack"/>,
 /// controlling its overall playback characteristics such as volume, pan, and mute/solo states.
 /// </summary>
-public class TrackSettings
+public class TrackSettings : IMidiMappable
 {
     private float _volume = 1.0f;
     private float _pan;
@@ -14,9 +16,12 @@ public class TrackSettings
     private bool _isSoloed;
     private bool _isEnabled = true;
 
+    /// <inheritdoc />
+    public Guid Id { get; } = Guid.NewGuid();
+    
     /// <summary>
     /// Gets or sets the parent <see cref="Track"/> that owns these settings.
-    /// This is used internally to propagate dirty state.
+    /// This is used internally to propagate dirty state for audio tracks.
     /// </summary>
     internal Track? ParentTrack { get; set; }
 
@@ -31,6 +36,12 @@ public class TrackSettings
     /// Analyzers process the audio after all track modifiers have been applied.
     /// </summary>
     public List<AudioAnalyzer> Analyzers { get; init; } = [];
+
+    /// <summary>
+    /// Gets the chain of MIDI modifiers (effects) to be applied to this track in real-time.
+    /// This is only applicable for <see cref="MidiTrack"/>.
+    /// </summary>
+    public List<MidiModifier> MidiModifiers { get; init; } = [];
 
     /// <summary>
     /// Gets or sets the master volume level for the track.
@@ -119,6 +130,7 @@ public class TrackSettings
         var clone = (TrackSettings)MemberwiseClone();
         clone.Modifiers.AddRange(Modifiers);
         clone.Analyzers.AddRange(Analyzers);
+        clone.MidiModifiers.AddRange(MidiModifiers);
         clone.ParentTrack = null;
         return clone;
     }
@@ -142,6 +154,7 @@ public class TrackSettings
     {
         ArgumentNullException.ThrowIfNull(modifier);
         Modifiers.Add(modifier);
+        ParentTrack?.ParentComposition?.RegisterMappableObject(modifier);
         MarkDirty();
     }
     /// <summary>
@@ -153,6 +166,7 @@ public class TrackSettings
     {
         var removed = Modifiers.Remove(modifier);
         if (removed) MarkDirty();
+        ParentTrack?.ParentComposition?.UnregisterMappableObject(modifier);
         return removed;
     }
     /// <summary>
@@ -175,6 +189,7 @@ public class TrackSettings
     {
         ArgumentNullException.ThrowIfNull(analyzer);
         Analyzers.Add(analyzer);
+        ParentTrack?.ParentComposition?.RegisterMappableObject(analyzer);
         MarkDirty();
     }
     /// <summary>
@@ -186,7 +201,50 @@ public class TrackSettings
     {
         var removed = Analyzers.Remove(analyzer);
         if (removed) MarkDirty();
+        ParentTrack?.ParentComposition?.UnregisterMappableObject(analyzer);
         return removed;
+    }
+
+    #endregion
+    
+    #region MIDI Modifier Management
+
+    /// <summary>
+    /// Adds a <see cref="MidiModifier"/> to the end of the track's MIDI modifier chain.
+    /// </summary>
+    /// <param name="modifier">The MIDI modifier to add. Cannot be null.</param>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="modifier"/> is null.</exception>
+    public void AddMidiModifier(MidiModifier modifier)
+    {
+        ArgumentNullException.ThrowIfNull(modifier);
+        MidiModifiers.Add(modifier);
+        ParentTrack?.ParentComposition?.RegisterMappableObject(modifier);
+        MarkDirty();
+    }
+
+    /// <summary>
+    /// Removes a specific <see cref="MidiModifier"/> from the track's MIDI modifier chain.
+    /// </summary>
+    /// <param name="modifier">The MIDI modifier to remove.</param>
+    /// <returns>True if the modifier was found and removed, false otherwise.</returns>
+    public bool RemoveMidiModifier(MidiModifier modifier)
+    {
+        var removed = MidiModifiers.Remove(modifier);
+        if (removed) MarkDirty();
+        ParentTrack?.ParentComposition?.UnregisterMappableObject(modifier);
+        return removed;
+    }
+
+    /// <summary>
+    /// Reorders a <see cref="MidiModifier"/> within the track's modifier chain to a new index.
+    /// </summary>
+    /// <param name="modifier">The MIDI modifier to reorder.</param>
+    /// <param name="newIndex">The zero-based index where the modifier should be moved to.</param>
+    public void ReorderMidiModifier(MidiModifier modifier, int newIndex)
+    {
+        if (!MidiModifiers.Remove(modifier)) return;
+        MidiModifiers.Insert(Math.Clamp(newIndex, 0, MidiModifiers.Count), modifier);
+        MarkDirty();
     }
 
     #endregion

@@ -35,6 +35,16 @@ public class ProjectData
     /// Gets or sets the target number of channels for rendering this composition.
     /// </summary>
     public int TargetChannels { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the time division in ticks per quarter note for MIDI data in the project.
+    /// </summary>
+    public int TicksPerQuarterNote { get; set; }
+
+    /// <summary>
+    /// Gets or sets the list of tempo markers defining the composition's tempo track.
+    /// </summary>
+    public List<ProjectTempoMarker> TempoTrack { get; set; } = [];
 
     /// <summary>
     /// Gets or sets the list of audio source references used in the composition.
@@ -50,6 +60,16 @@ public class ProjectData
     public List<ProjectTrack> Tracks { get; set; } = [];
     
     /// <summary>
+    /// Gets or sets the list of MIDI tracks included in the composition.
+    /// </summary>
+    public List<ProjectMidiTrack> MidiTracks { get; set; } = [];
+    
+    /// <summary>
+    /// Gets or sets the list of MIDI-controllable instrument components in the composition.
+    /// </summary>
+    public List<ProjectEffectData> MidiTargets { get; set; } = [];
+    
+    /// <summary>
     /// Gets or sets the list of <see cref="ProjectEffectData"/> instances representing
     /// sound modifiers <see cref="SoundModifier"/> applied to the master composition.
     /// </summary>
@@ -61,4 +81,8 @@ public class ProjectData
     /// </summary>
     public List<ProjectEffectData> Analyzers { get; set; } = [];
 
+    /// <summary>
+    /// Gets or sets the list of serialized MIDI mappings for the composition.
+    /// </summary>
+    public List<ProjectMidiMapping> MidiMappings { get; set; } = [];
 }

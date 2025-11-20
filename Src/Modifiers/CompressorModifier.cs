@@ -1,5 +1,7 @@
 ﻿using SoundFlow.Abstracts;
+using SoundFlow.Interfaces;
 using SoundFlow.Structs;
+using System;
 
 namespace SoundFlow.Modifiers;
 
@@ -8,39 +10,82 @@ namespace SoundFlow.Modifiers;
 /// </summary>
 public class CompressorModifier : SoundModifier
 {
+    private float _thresholdDb;
+    private float _ratio;
+    private float _attackMs;
+    private float _releaseMs;
+    private float _kneeDb;
+    private float _makeupGainDb;
+
     /// <summary>
     /// The threshold level in dBFS (-inf to 0).
     /// </summary>
-    public float ThresholdDb { get; set; }
-    
+    [ControllableParameter("Threshold", -60.0, 0.0)]
+    public float ThresholdDb
+    {
+        get => _thresholdDb;
+        set { _thresholdDb = value; UpdateParameters(); }
+    }
+
     /// <summary>
     /// The compression ratio (1:1 to inf:1).
     /// </summary>
-    public float Ratio { get; set; }
-    
+    [ControllableParameter("Ratio", 1.0, 20.0)]
+    public float Ratio
+    {
+        get => _ratio;
+        set { _ratio = value; UpdateParameters(); }
+    }
+
     /// <summary>
     /// The attack time in milliseconds.
     /// </summary>
-    public float AttackMs { get; set; }
-    
+    [ControllableParameter("Attack", 0.1, 200.0, MappingScale.Logarithmic)]
+    public float AttackMs
+    {
+        get => _attackMs;
+        set { _attackMs = value; UpdateParameters(); }
+    }
+
     /// <summary>
     /// The release time in milliseconds.
     /// </summary>
-    public float ReleaseMs { get; set; }
-    
+    [ControllableParameter("Release", 5.0, 2000.0, MappingScale.Logarithmic)]
+    public float ReleaseMs
+    {
+        get => _releaseMs;
+        set { _releaseMs = value; UpdateParameters(); }
+    }
+
     /// <summary>
     /// The knee radius in dBFS. A knee radius of 0 is a hard knee.
     /// </summary>
-    public float KneeDb { get; set; }
-    
+    [ControllableParameter("Knee", 0.0, 12.0)]
+    public float KneeDb
+    {
+        get => _kneeDb;
+        set { _kneeDb = value; UpdateParameters(); }
+    }
+
     /// <summary>
     /// The make-up gain in dBFS.
     /// </summary>
-    public float MakeupGainDb { get; set; }
+    [ControllableParameter("Makeup Gain", 0.0, 24.0)]
+    public float MakeupGainDb
+    {
+        get => _makeupGainDb;
+        set { _makeupGainDb = value; UpdateParameters(); }
+    }
 
-    private float _envelope;
-    private float _gain;
+    // Per-channel state
+    private readonly float[] _envelope;
+
+    // Calculated coefficients
+    private float _alphaA;
+    private float _alphaR;
+    
     private readonly AudioFormat _format;
+    private const float Epsilon = 1e-12f; // Prevents log(0)
 
     /// <summary>
     /// Constructs a new instance of <see cref="CompressorModifier"/>.
@@ -55,47 +100,60 @@ public class CompressorModifier : SoundModifier
     public CompressorModifier(AudioFormat format, float thresholdDb, float ratio, float attackMs, float releaseMs, float kneeDb = 0, float makeupGainDb = 0)
     {
         _format = format;
-        ThresholdDb = thresholdDb;
-        Ratio = ratio;
-        AttackMs = attackMs;
-        ReleaseMs = releaseMs;
-        KneeDb = kneeDb;
-        MakeupGainDb = makeupGainDb;
-        _gain = 1f;
+        _envelope = new float[format.Channels];
+        
+        Array.Fill(_envelope, LinearToDb(Epsilon));
+        
+        _thresholdDb = thresholdDb;
+        _ratio = ratio;
+        _attackMs = attackMs;
+        _releaseMs = releaseMs;
+        _kneeDb = kneeDb;
+        _makeupGainDb = makeupGainDb;
+
+        UpdateParameters();
+    }
+
+    /// <summary>
+    /// Call this method whenever you change the public properties.
+    /// </summary>
+    public void UpdateParameters()
+    {
+        // Clamp attack/release to a small minimum to prevent division by zero and clicks.
+        var attackS = Math.Max(0.0001f, _attackMs * 0.001f);
+        var releaseS = Math.Max(0.0001f, _releaseMs * 0.001f);
+        
+        _alphaA = MathF.Exp(-1f / (attackS * _format.SampleRate));
+        _alphaR = MathF.Exp(-1f / (releaseS * _format.SampleRate));
     }
     
     /// <inheritdoc />
     public override float ProcessSample(float sample, int channel)
     {
-        // Convert to dB
+        // Peak Detection (Envelope Follower)
         var sampleDb = LinearToDb(MathF.Abs(sample));
         
-        // Calculate envelope with different attack/release
-        var alphaA = MathF.Exp(-1f / (AttackMs * 0.001f * _format.SampleRate));
-        var alphaR = MathF.Exp(-1f / (ReleaseMs * 0.001f * _format.SampleRate));
-        
-        _envelope = sampleDb > _envelope 
-            ? alphaA * _envelope + (1 - alphaA) * sampleDb
-            : alphaR * _envelope + (1 - alphaR) * sampleDb;
+        // Determine if we are in attack or release phase and apply the appropriate smoothing
+        var currentEnvelope = _envelope[channel];
+        _envelope[channel] = sampleDb > currentEnvelope 
+            ? _alphaA * currentEnvelope + (1 - _alphaA) * sampleDb
+            : _alphaR * currentEnvelope + (1 - _alphaR) * sampleDb;
 
-        // Calculate gain reduction
-        var overshootDb = _envelope - ThresholdDb;
+        // Gain Computation
         var reductionDb = 0f;
+        var overshootDb = _envelope[channel] - _thresholdDb;
 
-        // Logarithmic Soft Knee
-        if (overshootDb > 0)
-            reductionDb = KneeDb > 0
-                ? (Ratio - 1) / Ratio * KneeDb * MathF.Log10(1 + overshootDb / KneeDb)
-                : overshootDb * (Ratio - 1) / Ratio; // Hard knee (or if kneeDb <= 0, treat as hard knee)
+        // If the envelope is over the threshold, calculate the required reduction
+        if (overshootDb > 0) 
+            reductionDb = overshootDb * (1f - 1f / _ratio); //  hard-knee compression formula
 
-        // Smooth gain changes
-        var targetGain = DbToLinear(-reductionDb + MakeupGainDb);
-        var alpha = reductionDb == 0 ? alphaR : alphaA;
-        _gain = alpha * _gain + (1 - alpha) * targetGain;
+        // Convert the desired dB change (reduction + makeup) to a linear gain multiplier
+        var targetGainLinear = DbToLinear(-reductionDb + _makeupGainDb);
 
-        return sample * _gain;
+        // Apply the gain to the original sample
+        return sample * targetGainLinear;
     }
 
     private static float DbToLinear(float db) => MathF.Pow(10, db / 20f);
-    private static float LinearToDb(float linear) => 20f * MathF.Log10(linear);
+    private static float LinearToDb(float linear) => 20f * MathF.Log10(linear + Epsilon);
 }

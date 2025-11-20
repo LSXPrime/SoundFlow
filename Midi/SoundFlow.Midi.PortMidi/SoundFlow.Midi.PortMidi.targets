@@ -1,0 +1,62 @@
+<Project>
+    <ItemGroup>
+        <!-- Windows Runtimes -->
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\win-x64\native\portmidi.dll" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+            <OutputPath>portmidi.dll</OutputPath>
+        </RuntimeTargets>
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\win-x86\native\portmidi.dll" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>win-x86</RuntimeIdentifier>
+            <OutputPath>portmidi.dll</OutputPath>
+        </RuntimeTargets>
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\win-arm64\native\portmidi.dll" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>win-arm64</RuntimeIdentifier>
+            <OutputPath>portmidi.dll</OutputPath>
+        </RuntimeTargets>
+
+        <!-- Linux Runtimes -->
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\linux-x64\native\libportmidi.so" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+            <OutputPath>libportmidi.so</OutputPath>
+        </RuntimeTargets>
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\linux-arm\native\libportmidi.so" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>linux-arm</RuntimeIdentifier>
+            <OutputPath>libportmidi.so</OutputPath>
+        </RuntimeTargets>
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\linux-arm64\native\libportmidi.so" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>linux-arm64</RuntimeIdentifier>
+            <OutputPath>libportmidi.so</OutputPath>
+        </RuntimeTargets>
+
+        <!-- macOS Runtimes -->
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\osx-x64\native\libportmidi.dylib" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>osx-x64</RuntimeIdentifier>
+            <OutputPath>libportmidi.dylib</OutputPath>
+        </RuntimeTargets>
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\osx-arm64\native\libportmidi.dylib" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>osx-arm64</RuntimeIdentifier>
+            <OutputPath>libportmidi.dylib</OutputPath>
+        </RuntimeTargets>
+        
+        <!-- FreeBSD Runtimes -->
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\freebsd-x64\native\libportmidi.so" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>freebsd-x64</RuntimeIdentifier>
+            <OutputPath>libportmidi.so</OutputPath>
+        </RuntimeTargets>
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\freebsd-arm64\native\libportmidi.so" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>freebsd-arm64</RuntimeIdentifier>
+            <OutputPath>libportmidi.so</OutputPath>
+        </RuntimeTargets>
+
+    </ItemGroup>
+</Project>

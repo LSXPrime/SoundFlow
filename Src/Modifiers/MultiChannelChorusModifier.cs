@@ -1,4 +1,5 @@
 ﻿using SoundFlow.Abstracts;
+using SoundFlow.Interfaces;
 using SoundFlow.Structs;
 
 namespace SoundFlow.Modifiers;
@@ -19,9 +20,14 @@ public class MultiChannelChorusModifier : SoundModifier
     }
 
     private readonly ChannelState[] _channels;
-    private readonly float _wetMix;
     private readonly int _maxDelay;
     private readonly AudioFormat _format;
+
+    /// <summary>
+    /// The wet/dry mix (0.0 - 1.0).
+    /// </summary>
+    [ControllableParameter("Mix", 0.0, 1.0)]
+    public float WetMix { get; set; }
 
     /// <summary>
     /// Constructs a new multichannel chorus effect.
@@ -44,7 +50,7 @@ public class MultiChannelChorusModifier : SoundModifier
                 $"Expected {_format.Channels} channel parameters, got {channelParameters.Length}");
         }
 
-        _wetMix = wetMix;
+        WetMix = wetMix;
         _maxDelay = maxDelay;
         _channels = new ChannelState[_format.Channels];
 
@@ -86,10 +92,10 @@ public class MultiChannelChorusModifier : SoundModifier
             state.DelayIndex = (state.DelayIndex + 1) % _maxDelay;
             
             // Mix wet/dry
-            buffer[i] = buffer[i] * (1 - _wetMix) + delayed * _wetMix;
+            buffer[i] = buffer[i] * (1 - WetMix) + delayed * WetMix;
         }
     }
 
     /// <inheritdoc />
-    public override float ProcessSample(float sample, int channel) => throw new NotImplementedException();
+    public override float ProcessSample(float sample, int channel) => throw new NotSupportedException();
 }

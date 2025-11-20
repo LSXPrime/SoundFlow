@@ -4,7 +4,10 @@ using SoundFlow.Interfaces;
 using SoundFlow.Exceptions;
 using System.Collections.ObjectModel;
 using SoundFlow.Abstracts.Devices;
+using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Structs;
+using SoundFlow.Metadata;
+using SoundFlow.Metadata.Models;
 
 namespace SoundFlow.Components;
 
@@ -26,9 +29,9 @@ public class Recorder : IDisposable
     public readonly SampleFormat SampleFormat;
 
     /// <summary>
-    /// Gets the encoding format used for recording.
+    /// Gets the format identifier (e.g., "wav", "flac") used for encoding.
     /// </summary>
-    public readonly EncodingFormat EncodingFormat;
+    public readonly string FormatId;
 
     /// <summary>
     /// Gets the sample rate used for recording, in samples per second.
@@ -47,6 +50,12 @@ public class Recorder : IDisposable
     public readonly Stream Stream = Stream.Null;
 
     /// <summary>
+    /// Gets the final destination file path where audio will be recorded.
+    /// Will be null if recording via a callback or stream.
+    /// </summary>
+    public readonly string? FilePath;
+
+    /// <summary>
     /// Gets or sets the callback function to be invoked when audio data is processed.
     /// This is used when recording directly to memory or for custom processing, instead of to a file.
     /// </summary>
@@ -58,19 +67,33 @@ public class Recorder : IDisposable
     private readonly List<AudioAnalyzer> _analyzers = [];
     private readonly AudioEngine _engine;
     private readonly AudioFormat _format;
+    
+    private SoundTags? _tagsToWrite;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Recorder"/> class to record audio to a file.
     /// </summary>
     /// <param name="captureDevice">The capture device to record from.</param>
+    /// <param name="filePath">The final destination path for the recorded audio file.</param>
+    /// <param name="formatId">The string identifier for the desired encoding format (e.g., "wav", "flac"). Defaults to "wav".</param>
+    public Recorder(AudioCaptureDevice captureDevice, string filePath, string formatId = "wav") : this(captureDevice, new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None), formatId)
+    {
+        FilePath = filePath;
+    }
+
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Recorder"/> class to record audio to a stream.
+    /// </summary>
+    /// <param name="captureDevice">The capture device to record from.</param>
     /// <param name="stream">The stream to write encoded recorded audio to.</param>
-    /// <param name="encodingFormat">The desired encoding format for the recorded audio file. Defaults to <see cref="EncodingFormat.Wav"/>.</param>
-    public Recorder(AudioCaptureDevice captureDevice, Stream stream, EncodingFormat encodingFormat = EncodingFormat.Wav)
+    /// <param name="formatId">The string identifier for the desired encoding format (e.g., "wav", "flac"). Defaults to "wav".</param>
+    public Recorder(AudioCaptureDevice captureDevice, Stream stream, string formatId = "wav")
     {
         _captureDevice = captureDevice;
         _engine = captureDevice.Engine;
         SampleFormat = captureDevice.Format.Format;
-        EncodingFormat = encodingFormat;
+        FormatId = formatId;
         Stream = stream;
         SampleRate = captureDevice.Format.SampleRate;
         Channels = captureDevice.Format.Channels;
@@ -90,6 +113,7 @@ public class Recorder : IDisposable
         SampleFormat = captureDevice.Format.Format;
         SampleRate = captureDevice.Format.SampleRate;
         Channels = captureDevice.Format.Channels;
+        FormatId = string.Empty; // No encoding format needed for callback mode.
     }
 
     /// <summary>
@@ -104,23 +128,21 @@ public class Recorder : IDisposable
 
     /// <summary>
     /// Starts the audio recording process.
-    /// If recording to a file, it initializes the audio encoder.
+    /// If recording to a file or stream, it initializes an audio encoder.
     /// </summary>
-    /// <exception cref="ArgumentException">Thrown if both <see cref="Stream"/> and <see cref="ProcessCallback"/> are invalid (e.g., <see cref="Stream"/> is null or empty and <see cref="ProcessCallback"/> is null).</exception>
-    /// <exception cref="BackendException">Thrown if creating the audio encoder fails when recording to a file.</exception>
-    public void StartRecording()
+    /// <param name="tags">Optional metadata tags to write to the file upon completion of the recording.</param>
+    /// <exception cref="ArgumentException">Thrown if an invalid stream or callback is provided.</exception>
+    public void StartRecording(SoundTags? tags = null)
     {
-        if (ProcessCallback == null && (Stream == Stream.Null || !Stream.CanWrite))
-            throw new ArgumentException("Invalid stream or callback", nameof(Stream));
+        if ((Stream == Stream.Null || !Stream.CanWrite) && ProcessCallback == null)
+            throw new ArgumentException("A valid writable stream or callback must be provided.");
 
-        if (State == PlaybackState.Playing)
-            return;
+        if (State == PlaybackState.Playing) return;
 
-        if (Stream != Stream.Null)
+        _tagsToWrite = tags;
+        if (!string.IsNullOrEmpty(FormatId))
         {
-            _encoder = _engine.CreateEncoder(Stream, EncodingFormat, _format);
-            if (_encoder == null)
-                throw new BackendException(_engine.GetType().Name, Result.Error, "Failed to create encoder.");
+            _encoder = _engine.CreateEncoder(Stream, FormatId, _format);
         }
 
         _captureDevice.OnAudioProcessed += OnAudioProcessed;
@@ -154,10 +176,9 @@ public class Recorder : IDisposable
 
     /// <summary>
     /// Stops the recording process and releases resources.
-    /// If recording to a file, it finalizes the encoding process and closes the file.
-    /// Detaches from the audio processing engine and sets the state to <see cref="PlaybackState.Stopped"/>.
+    /// If recording to a file, it finalizes the encoding process and writes metadata tags if provided.
     /// </summary>
-    public void StopRecording()
+    public async Task StopRecordingAsync()
     {
         if (State == PlaybackState.Stopped)
             return;
@@ -167,7 +188,22 @@ public class Recorder : IDisposable
         _encoder?.Dispose();
         _encoder = null;
         State = PlaybackState.Stopped;
+
+        try
+        {
+            if (!string.IsNullOrEmpty(FilePath))
+                if (_tagsToWrite != null) await SoundMetadataWriter.WriteTagsAsync(FilePath, _tagsToWrite);
+        }
+        finally
+        {
+            _tagsToWrite = null;
+        }
     }
+    
+    /// <summary>
+    /// Synchronously stops the recording process.
+    /// </summary>
+    public void StopRecording() => StopRecordingAsync().GetAwaiter().GetResult();
 
     /// <summary>
     /// Adds a <see cref="SoundModifier"/> to the recording pipeline.
@@ -239,7 +275,7 @@ public class Recorder : IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
-        StopRecording();
+        if (State != PlaybackState.Stopped) StopRecording();
         _captureDevice.OnAudioProcessed -= OnAudioProcessed;
         ProcessCallback = null;
         _modifiers.Clear();

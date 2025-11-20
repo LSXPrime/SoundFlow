@@ -1,6 +1,8 @@
 using System.Text.Json.Serialization;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
+using SoundFlow.Providers;
+using SoundFlow.Structs;
 
 namespace SoundFlow.Editing.Persistence;
 
@@ -38,6 +40,11 @@ public class ProjectSourceReference
     public string? EmbeddedDataB64 { get; set; }
 
     /// <summary>
+    /// If true, this reference points to MIDI data instead of audio data.
+    /// </summary>
+    public bool IsMidiData { get; set; }
+
+    /// <summary>
     /// The original sample format of the source if known, especially important for embedded data.
     /// </summary>
     public SampleFormat OriginalSampleFormat { get; set; } = SampleFormat.F32;
@@ -46,6 +53,11 @@ public class ProjectSourceReference
     /// The original sample rate of the source if known.
     /// </summary>
     public int? OriginalSampleRate { get; set; }
+    
+    /// <summary>
+    /// The original channel layout of the source audio.
+    /// </summary>
+    public ChannelLayout OriginalChannelLayout { get; set; } = ChannelLayout.Unknown;
 
     /// <summary>
     /// For internal use during loading: flag indicating if the media is currently missing.
@@ -60,4 +72,11 @@ public class ProjectSourceReference
     /// </summary>
     [JsonIgnore]
     public ISoundDataProvider? ResolvedDataProvider { get; set; }
+
+    /// <summary>
+    /// For internal use during loading: the resolved MidiDataProvider instance.
+    /// Not serialized.
+    /// </summary>
+    [JsonIgnore]
+    public MidiDataProvider? ResolvedMidiDataProvider { get; set; }
 }

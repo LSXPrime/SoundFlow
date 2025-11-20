@@ -1,4 +1,5 @@
 ﻿using SoundFlow.Abstracts;
+using SoundFlow.Interfaces;
 using SoundFlow.Structs;
 
 namespace SoundFlow.Modifiers;
@@ -29,6 +30,7 @@ public class FrequencyBandModifier : SoundModifier
     /// Gets or sets the high cutoff frequency in Hertz.
     /// </summary>
     /// <value>This value ranges from 0.0 to <see cref="AudioFormat.SampleRate"/>.</value>
+    [ControllableParameter("High Cut", 20.0, 20000.0, MappingScale.Logarithmic)]
     public float HighCutoffFrequency
     {
         get => _lowPass.CutoffFrequency;
@@ -39,6 +41,7 @@ public class FrequencyBandModifier : SoundModifier
     /// Gets or sets the low cutoff frequency in Hertz.
     /// </summary>
     /// <value>This value ranges from 0.0 to <see cref="AudioFormat.SampleRate"/>.</value>
+    [ControllableParameter("Low Cut", 20.0, 20000.0, MappingScale.Logarithmic)]
     public float LowCutoffFrequency
     {
         get => _highPass.CutoffFrequency;

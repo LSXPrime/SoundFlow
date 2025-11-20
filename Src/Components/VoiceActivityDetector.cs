@@ -50,7 +50,6 @@ public class VoiceActivityDetector : AudioAnalyzer
         set => _energyThreshold = value;
     }
     
-    // CHANGED: Added properties for activation and hangover times
     /// <summary>
     /// Gets or sets the time in milliseconds the signal must be considered speech before activation.
     /// Helps prevent short noise bursts from triggering the VAD.
@@ -104,8 +103,7 @@ public class VoiceActivityDetector : AudioAnalyzer
         _energyThreshold = energyThreshold;
         _window = MathHelper.HammingWindow(fftSize);
 
-        // CHANGED: Calculate frame duration to convert time properties to frame counts
-        // We assume 50% overlap for continuous analysis, so we process frames every _fftSize / 2 samples.
+        // I'm 50% overlap for continuous analysis, so process frames every _fftSize / 2 samples.
         _frameDurationMs = (_fftSize / 2.0f) / Format.SampleRate * 1000.0f;
     }
 
@@ -124,7 +122,7 @@ public class VoiceActivityDetector : AudioAnalyzer
             var frame = new float[_fftSize];
             // Create a snapshot for analysis without dequeuing everything immediately
             var frameSamples = _sampleBuffer.ToArray(); 
-            for (int i = 0; i < _fftSize; i++)
+            for (var i = 0; i < _fftSize; i++)
                 frame[i] = frameSamples[i];
 
             ApplyWindow(frame);

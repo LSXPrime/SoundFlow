@@ -1,0 +1,86 @@
+﻿<Project>
+    <ItemGroup>
+        <!-- Windows Runtimes -->
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\win-x64\native\soundflow-ffmpeg.dll" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+            <OutputPath>soundflow-ffmpeg.dll</OutputPath>
+        </RuntimeTargets>
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\win-x86\native\soundflow-ffmpeg.dll" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>win-x86</RuntimeIdentifier>
+            <OutputPath>soundflow-ffmpeg.dll</OutputPath>
+        </RuntimeTargets>
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\win-arm64\native\soundflow-ffmpeg.dll" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>win-arm64</RuntimeIdentifier>
+            <OutputPath>soundflow-ffmpeg.dll</OutputPath>
+        </RuntimeTargets>
+
+        <!-- Linux Runtimes -->
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\linux-x64\native\libsoundflow-ffmpeg.so" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+            <OutputPath>libsoundflow-ffmpeg.so</OutputPath>
+        </RuntimeTargets>
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\linux-arm\native\libsoundflow-ffmpeg.so" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>linux-arm</RuntimeIdentifier>
+            <OutputPath>libsoundflow-ffmpeg.so</OutputPath>
+        </RuntimeTargets>
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\linux-arm64\native\libsoundflow-ffmpeg.so" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>linux-arm64</RuntimeIdentifier>
+            <OutputPath>libsoundflow-ffmpeg.so</OutputPath>
+        </RuntimeTargets>
+
+        <!-- macOS Runtimes -->
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\osx-x64\native\libsoundflow-ffmpeg.dylib" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>osx-x64</RuntimeIdentifier>
+            <OutputPath>libsoundflow-ffmpeg.dylib</OutputPath>
+        </RuntimeTargets>
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\osx-arm64\native\libsoundflow-ffmpeg.dylib" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>osx-arm64</RuntimeIdentifier>
+            <OutputPath>libsoundflow-ffmpeg.dylib</OutputPath>
+        </RuntimeTargets>
+
+        <!-- Android Runtimes -->
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\android-arm\native\libsoundflow-ffmpeg.so" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>android-arm</RuntimeIdentifier>
+            <OutputPath>libsoundflow-ffmpeg.so</OutputPath>
+        </RuntimeTargets>
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\android-arm64\native\libsoundflow-ffmpeg.so" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>android-arm64</RuntimeIdentifier>
+            <OutputPath>libsoundflow-ffmpeg.so</OutputPath>
+        </RuntimeTargets>
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\android-x64\native\libsoundflow-ffmpeg.so" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>android-x64</RuntimeIdentifier>
+            <OutputPath>libsoundflow-ffmpeg.so</OutputPath>
+        </RuntimeTargets>
+
+        <!-- iOS Runtime (Framework) -->
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\iOS-arm64\native\soundflow-ffmpeg.framework" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>iOS-arm64</RuntimeIdentifier>
+            <OutputPath>soundflow-ffmpeg.framework</OutputPath>
+        </RuntimeTargets>
+
+        <!-- FreeBSD Runtimes -->
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\freebsd-x64\native\libsoundflow-ffmpeg.so" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>freebsd-x64</RuntimeIdentifier>
+            <OutputPath>libsoundflow-ffmpeg.so</OutputPath>
+        </RuntimeTargets>
+        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\freebsd-arm64\native\libsoundflow-ffmpeg.so" AssetKind="Native">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <RuntimeIdentifier>freebsd-arm64</RuntimeIdentifier>
+            <OutputPath>libsoundflow-ffmpeg.so</OutputPath>
+        </RuntimeTargets>
+
+    </ItemGroup>
+</Project>

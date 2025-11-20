@@ -1,4 +1,5 @@
 using SoundFlow.Abstracts;
+using SoundFlow.Interfaces;
 
 namespace SoundFlow.Editing;
 
@@ -6,8 +7,11 @@ namespace SoundFlow.Editing;
 /// Represents the configurable settings for an <see cref="AudioSegment"/>,
 /// controlling its playback characteristics such as volume, pan, fades, looping, and speed.
 /// </summary>
-public class AudioSegmentSettings
+public class AudioSegmentSettings : IMidiMappable
 {
+    /// <inheritdoc />
+    public Guid Id { get; } = Guid.NewGuid();
+    
     private float _volume = 1.0f;
     private float _pan;
     private TimeSpan _fadeInDuration = TimeSpan.Zero;
@@ -149,7 +153,6 @@ public class AudioSegmentSettings
         get => _loop;
         set
         {
-            // Assuming LoopSettings is a struct or an immutable class for simple comparison
             if (_loop.Equals(value)) return;
             _loop = value;
             MarkDirty();

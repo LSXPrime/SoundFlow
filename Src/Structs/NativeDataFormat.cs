@@ -11,7 +11,7 @@ namespace SoundFlow.Structs;
 /// Can be used by reading an array from a pointer to `NativeDataFormats` of <see cref="SoundFlow.Structs.DeviceInfo"/> struct.
 /// </remarks>
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-public struct NativeDataFormat
+public record struct NativeDataFormat
 {
     /// <summary>
     /// The audio sample format.

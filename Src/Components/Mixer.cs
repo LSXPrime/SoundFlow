@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using SoundFlow.Abstracts;
 using SoundFlow.Abstracts.Devices;
 using SoundFlow.Structs;
@@ -10,10 +9,13 @@ namespace SoundFlow.Components;
 /// </summary>
 public sealed class Mixer : SoundComponent
 {
-    private readonly ConcurrentDictionary<SoundComponent, byte> _components = new();
+    // Staging list for thread-safe modification
+    private readonly List<SoundComponent> _componentsStaging = [];
     
+    // Snapshot for the audio thread to read without locking
+    private volatile SoundComponent[] _componentsSnapshot = [];
+
     private readonly object _modificationLock = new();
-    
     private volatile bool _isDisposed;
 
     /// <summary>
@@ -35,7 +37,7 @@ public sealed class Mixer : SoundComponent
         {
             lock (_modificationLock)
             {
-                return _components.Keys.ToArray();
+                return new List<SoundComponent>(_componentsStaging);
             }
         }
     }
@@ -75,8 +77,10 @@ public sealed class Mixer : SoundComponent
                 throw new ArgumentException("Adding this component would create a cycle in the audio graph.",
                     nameof(component));
 
-            if (_components.TryAdd(component, 0))
-                component.Parent = this;
+            if (_componentsStaging.Contains(component)) return;
+            _componentsStaging.Add(component);
+            component.Parent = this;
+            _componentsSnapshot = _componentsStaging.ToArray();
         }
     }
 
@@ -110,8 +114,9 @@ public sealed class Mixer : SoundComponent
 
         lock (_modificationLock)
         {
-            if (_components.TryRemove(component, out _))
-                component.Parent = null;
+            if (!_componentsStaging.Remove(component)) return;
+            component.Parent = null;
+            _componentsSnapshot = _componentsStaging.ToArray();
         }
     }
 
@@ -121,14 +126,13 @@ public sealed class Mixer : SoundComponent
         if (!Enabled || Mute || _isDisposed)
             return;
 
-        lock (_modificationLock)
-        {
-            foreach (var component in _components.Keys)
-            { 
-                if (component is { Enabled: true, Mute: false }) 
-                    component.Process(buffer, channels);
+        // Read reference to the snapshot array.
+        var components = _componentsSnapshot;
 
-            }
+        foreach (var component in components)
+        { 
+            if (component is { Enabled: true, Mute: false }) 
+                component.Process(buffer, channels);
         }
     }
 
@@ -148,13 +152,14 @@ public sealed class Mixer : SoundComponent
         
         lock (_modificationLock)
         {
-            foreach (var component in _components.Keys)
+            foreach (var component in _componentsStaging)
             {
                 component.Parent = null;
                 if (component is IDisposable disposable)
                     disposable.Dispose();
             }
-            _components.Clear();
+            _componentsStaging.Clear();
+            _componentsSnapshot = [];
         }
         
         base.Dispose();

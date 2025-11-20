@@ -2,7 +2,7 @@ namespace SoundFlow.Editing.Persistence;
 
 /// <summary>
 /// Represents the configurable settings for a Track,
-/// suitable for data transfer.
+/// suitable for data transfer and serialization.
 /// </summary>
 public class ProjectTrackSettings
 {
@@ -48,4 +48,10 @@ public class ProjectTrackSettings
     /// These are represented as DTOs to carry their serializable data.
     /// </summary>
     public List<ProjectEffectData> Analyzers { get; init; } = [];
+
+    /// <summary>
+    /// Gets the chain of MIDI modifiers (effects) to be applied to this track.
+    /// These are represented as DTOs to carry their serializable data.
+    /// </summary>
+    public List<ProjectEffectData> MidiModifiers { get; init; } = [];
 }

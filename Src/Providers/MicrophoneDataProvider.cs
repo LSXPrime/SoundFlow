@@ -2,6 +2,7 @@ using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using System.Collections.Concurrent;
 using SoundFlow.Abstracts.Devices;
+using SoundFlow.Metadata.Models;
 
 namespace SoundFlow.Providers;
 
@@ -56,6 +57,9 @@ public class MicrophoneDataProvider : ISoundDataProvider
 
     /// <inheritdoc />
     public bool IsDisposed { get; private set; }
+    
+    /// <inheritdoc />
+    public SoundFormatInfo? FormatInfo => null;
 
     /// <inheritdoc />
     public event EventHandler<EventArgs>? EndOfStreamReached;

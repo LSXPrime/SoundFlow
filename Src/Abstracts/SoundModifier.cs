@@ -1,11 +1,19 @@
+using SoundFlow.Interfaces;
+using SoundFlow.Midi.Interfaces;
+using SoundFlow.Midi.Structs;
+using SoundFlow.Structs;
+
 namespace SoundFlow.Abstracts;
 
 /// <summary>
 /// An abstract representation of a sound modifier.
 /// Implementations of this class alter audio data to apply various effects.
 /// </summary>
-public abstract class SoundModifier
+public abstract class SoundModifier : IMidiMappable, IMidiControllable
 {
+    /// <inheritdoc />
+    public Guid Id { get; } = Guid.NewGuid();
+
     /// <summary>
     /// The name of the modifier.
     /// </summary>
@@ -15,6 +23,9 @@ public abstract class SoundModifier
     /// Whether the modifier is enabled or not.
     /// </summary>
     public bool Enabled { get; set; } = true;
+
+    /// <inheritdoc />
+    public virtual void ProcessMidiMessage(MidiMessage message) { }
     
     /// <summary>
     /// Applies the modifier to a buffer of audio samples.

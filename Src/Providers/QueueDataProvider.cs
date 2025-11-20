@@ -1,5 +1,6 @@
 ﻿using SoundFlow.Enums;
 using SoundFlow.Interfaces;
+using SoundFlow.Metadata.Models;
 using SoundFlow.Structs;
 
 namespace SoundFlow.Providers;
@@ -86,6 +87,9 @@ public class QueueDataProvider : ISoundDataProvider
 
     /// <inheritdoc />
     public bool IsDisposed { get; private set; }
+
+    /// <inheritdoc />
+    public SoundFormatInfo? FormatInfo { get; } = null;
 
     /// <summary>
     ///     Gets the number of samples currently available in the queue.

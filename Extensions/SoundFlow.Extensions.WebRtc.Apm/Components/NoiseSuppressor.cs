@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using SoundFlow.Structs;
+using SoundFlow.Utils;
 
 namespace SoundFlow.Extensions.WebRtc.Apm.Components;
 
@@ -66,8 +67,8 @@ public class NoiseSuppressor : IDisposable
         _audioFormat = audioFormat;
 
         // Extract properties for easier use and validation
-        int sampleRate = _audioFormat.SampleRate;
-        int numChannels = _audioFormat.Channels;
+        var sampleRate = _audioFormat.SampleRate;
+        var numChannels = _audioFormat.Channels;
 
         if (_audioFormat.Format != SampleFormat.F32)
             throw new ArgumentException("Audio format must be F32 (float) for WebRTC APM processing.", nameof(audioFormat));
@@ -142,6 +143,7 @@ public class NoiseSuppressor : IDisposable
         }
         catch
         {
+            Log.Error("NoiseSuppressor: Failed to allocate managed and unmanaged buffers.");
             Dispose();
             throw;
         }

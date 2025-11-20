@@ -11,6 +11,11 @@ public interface ISoundPlayer : IDisposable
     /// Gets the current playback state of the sound player.
     /// </summary>
     PlaybackState State { get; }
+    
+    /// <summary>
+    /// Gets the data provider that supplies audio for playback.
+    /// </summary>
+    ISoundDataProvider DataProvider { get; }
 
     /// <summary>
     /// Gets a value indicating whether the sound player is currently looping the audio.

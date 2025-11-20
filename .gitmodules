@@ -1,6 +1,10 @@
-[submodule "Native/Submodules/miniaudio"]
-	path = Native/Submodules/miniaudio
-	url = https://github.com/mackron/miniaudio.git
 [submodule "Extensions/SoundFlow.Extensions.WebRtc.Apm/Native"]
-	path = Extensions/SoundFlow.Extensions.WebRtc.Apm/Native
+	path = Native/webrtc-audio-processing
 	url = https://github.com/LSXPrime/webrtc-audio-processing
+[submodule "Native/miniaudio-backend/miniaudio"]
+	path = Native/miniaudio-backend/miniaudio
+	url = https://github.com/mackron/miniaudio.git
+	branch = dev
+[submodule "Native/portmidi"]
+	path = Native/portmidi
+	url = https://github.com/PortMidi/portmidi.git

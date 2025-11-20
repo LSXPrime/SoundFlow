@@ -5,7 +5,10 @@ using System.Text;
 using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
+using SoundFlow.Metadata;
+using SoundFlow.Metadata.Models;
 using SoundFlow.Structs;
+using SoundFlow.Utils;
 
 namespace SoundFlow.Providers;
 
@@ -21,19 +24,40 @@ public sealed class NetworkDataProvider : ISoundDataProvider
     private readonly HttpClient _httpClient;
     private volatile NetworkDataProviderBase? _actualProvider;
     private bool _initializationFailed;
+    private readonly ReadOptions _defaultReadOptions = new()
+    {
+        ReadTags = false,
+        ReadAlbumArt = false,
+        DurationAccuracy = DurationAccuracy.FastEstimate
+    };
 
     /// <summary>
-    ///     Initializes a new instance of the <see cref="NetworkDataProvider" /> class.
-    ///     This begins the process of downloading and preparing the stream.
+    ///     Initializes a new instance of the <see cref="NetworkDataProvider" /> class, automatically detecting the audio format.
+    ///     This begins the process of downloading and preparing the stream. Not recommended for HLS streams.
     /// </summary>
     /// <param name="engine">The audio engine instance.</param>
-    /// <param name="format">The audio format containing channels and sample rate and sample format</param>
     /// <param name="url">The URL of the audio stream.</param>
-    public NetworkDataProvider(AudioEngine engine, AudioFormat format, string url)
+    /// <param name="options">Optional configuration for metadata reading.</param>
+    public NetworkDataProvider(AudioEngine engine, string url, ReadOptions? options = null)
+    {
+        _httpClient = new HttpClient();
+        SampleRate = 0; // Will be determined during initialization
+        _ = InitializeInternalAsync(engine, null, null, url ?? throw new ArgumentNullException(nameof(url)), options ?? _defaultReadOptions);
+    }
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="NetworkDataProvider" /> class with a specified format.
+    ///     This is required for HLS streams where the segment format must be known in advance.
+    /// </summary>
+    /// <param name="engine">The audio engine instance.</param>
+    /// <param name="format">The audio format containing channels and sample rate and sample format.</param>
+    /// <param name="url">The URL of the audio stream.</param>
+    /// <param name="hlsSegmentFormatId">For HLS streams, the format identifier (e.g., "aac", "mp3") of the individual segments. This is ignored for direct streams.</param>
+    public NetworkDataProvider(AudioEngine engine, AudioFormat format, string url, string? hlsSegmentFormatId = null)
     {
         _httpClient = new HttpClient();
         SampleRate = format.SampleRate;
-        _ = InitializeInternalAsync(engine, format, url ?? throw new ArgumentNullException(nameof(url)));
+        _ = InitializeInternalAsync(engine, format, hlsSegmentFormatId, url ?? throw new ArgumentNullException(nameof(url)), _defaultReadOptions);
     }
 
     /// <inheritdoc />
@@ -49,10 +73,13 @@ public sealed class NetworkDataProvider : ISoundDataProvider
     public SampleFormat SampleFormat => _actualProvider?.SampleFormat ?? SampleFormat.Unknown;
 
     /// <inheritdoc />
-    public int SampleRate { get; }
+    public int SampleRate { get; private set; }
 
     /// <inheritdoc />
     public bool IsDisposed { get; private set; }
+    
+    /// <inheritdoc />
+    public SoundFormatInfo? FormatInfo => _actualProvider?.FormatInfo;
 
     /// <inheritdoc />
     public event EventHandler<EventArgs>? EndOfStreamReached;
@@ -60,28 +87,32 @@ public sealed class NetworkDataProvider : ISoundDataProvider
     /// <inheritdoc />
     public event EventHandler<PositionChangedEventArgs>? PositionChanged;
 
-    private async Task InitializeInternalAsync(AudioEngine engine, AudioFormat format, string url)
+    private async Task InitializeInternalAsync(AudioEngine engine, AudioFormat? format, string? hlsSegmentFormatId, string url, ReadOptions? options)
     {
         try
         {
             var isHls = await IsHlsUrlAsync(url);
-            
+
             NetworkDataProviderBase provider = isHls
-                ? new HlsStreamProvider(engine, format, url, _httpClient)
-                : new DirectStreamProvider(engine, format, url, _httpClient);
+                ? new HlsStreamProvider(engine, format, hlsSegmentFormatId, url, _httpClient)
+                : new DirectStreamProvider(engine, format, url, _httpClient, options);
 
             await provider.InitializeAsync();
             
             // Wire up events from the internal provider to this facade's events
             provider.EndOfStreamReached += (_, e) => EndOfStreamReached?.Invoke(this, e);
             provider.PositionChanged += (_, e) => PositionChanged?.Invoke(this, e);
+            
+            // Update the public sample rate after initialization
+            SampleRate = provider.SampleRate;
 
             // The provider is ready, assign it. This is the "go-live" signal.
             _actualProvider = provider;
         }
-        catch
+        catch (Exception ex)
         {
             // If anything fails during initialization, mark it and clean up.
+            Log.Error($"NetworkDataProvider failed to initialize for URL '{url}': {ex.Message}");
             _initializationFailed = true;
             EndOfStreamReached?.Invoke(this, EventArgs.Empty);
             Dispose();
@@ -190,11 +221,11 @@ public sealed class NetworkDataProvider : ISoundDataProvider
 /// <summary>
 ///     Internal abstract base class for network providers.
 /// </summary>
-internal abstract class NetworkDataProviderBase(AudioEngine engine, AudioFormat format, string url, HttpClient client)
+internal abstract class NetworkDataProviderBase(AudioEngine engine, AudioFormat? format, string url, HttpClient client)
     : ISoundDataProvider
 {
     protected readonly AudioEngine Engine = engine;
-    protected readonly AudioFormat Format = format;
+    protected AudioFormat? UserProvidedFormat = format;
     protected readonly string Url = url;
     protected readonly HttpClient HttpClient = client;
     protected readonly object Lock = new();
@@ -205,23 +236,13 @@ internal abstract class NetworkDataProviderBase(AudioEngine engine, AudioFormat 
     public abstract int ReadBytes(Span<float> buffer);
     public abstract void Seek(int sampleOffset);
     
-
-    public int Position
-    {
-        get
-        {
-            lock (Lock)
-            {
-                return SamplePosition;
-            }
-        }
-    }
-    
+    public int Position => SamplePosition;
     public int Length { get; protected set; }
     public bool CanSeek { get; protected set; }
     public SampleFormat SampleFormat { get; protected set; }
-    public int SampleRate { get; } = format.SampleRate;
+    public int SampleRate { get; protected set; }
     public bool IsDisposed { get; private set; }
+    public SoundFormatInfo? FormatInfo { get; protected set; }
 
     public event EventHandler<EventArgs>? EndOfStreamReached;
     public event EventHandler<PositionChangedEventArgs>? PositionChanged;
@@ -240,12 +261,12 @@ internal abstract class NetworkDataProviderBase(AudioEngine engine, AudioFormat 
 ///     Handles direct audio streams (e.g., MP3, WAV, OGG files).
 ///     Uses a background buffering strategy for large files to prevent network issues from crashing the audio thread.
 /// </summary>
-internal sealed class DirectStreamProvider(AudioEngine engine, AudioFormat format, string url, HttpClient client)
+internal sealed class DirectStreamProvider(AudioEngine engine, AudioFormat? format, string url, HttpClient client, ReadOptions? readOptions)
     : NetworkDataProviderBase(engine, format, url, client)
 {
     private ISoundDecoder? _decoder;
     private Stream? _stream;
-    
+
     // Files smaller than 50 MB will be downloaded to memory to allow seeking.
     private const long MaxMemoryDownloadSize = 50 * 1024 * 1024;
 
@@ -275,10 +296,41 @@ internal sealed class DirectStreamProvider(AudioEngine engine, AudioFormat forma
             bufferedStream.StartProducerTask(response); // Starts the background download.
             _stream = bufferedStream;
         }
-        
-        _decoder = Engine.CreateDecoder(_stream, Format);
+
+        var formatInfoResult = SoundMetadataReader.Read(_stream, readOptions);
+
+        if (formatInfoResult is { IsSuccess: true, Value: not null })
+        {
+            FormatInfo = formatInfoResult.Value;
+            var formatToUse = UserProvidedFormat ?? new AudioFormat
+            {
+                Format = SampleFormat.F32,
+                Channels = FormatInfo.ChannelCount,
+                SampleRate = FormatInfo.SampleRate,
+                Layout = AudioFormat.GetLayoutFromChannels(FormatInfo.ChannelCount)
+            };
+            _stream.Position = 0;
+            _decoder = Engine.CreateDecoder(_stream, FormatInfo.FormatIdentifier, formatToUse);
+        }
+        else
+        {
+            _stream.Position = 0;
+            _decoder = Engine.CreateDecoder(_stream, out var detectedFormat, UserProvidedFormat);
+            FormatInfo = new SoundFormatInfo
+            {
+                FormatName = "Unknown (Probed)",
+                FormatIdentifier = "unknown",
+                ChannelCount = detectedFormat.Channels,
+                SampleRate = detectedFormat.SampleRate,
+                Duration = _decoder.Length > 0 && detectedFormat.SampleRate > 0
+                    ? TimeSpan.FromSeconds((double)_decoder.Length / (detectedFormat.SampleRate * detectedFormat.Channels))
+                    : TimeSpan.Zero
+            };
+        }
+
         SampleFormat = _decoder.SampleFormat;
-        Length = _decoder.Length;
+        SampleRate = _decoder.SampleRate;
+        Length = FormatInfo != null ? (int)(FormatInfo.Duration.TotalSeconds * SampleRate * FormatInfo.ChannelCount) : _decoder.Length;
         CanSeek = _stream.CanSeek;
     }
 
@@ -331,7 +383,7 @@ internal sealed class DirectStreamProvider(AudioEngine engine, AudioFormat forma
 /// <summary>
 ///     Handles HLS (HTTP Live Streaming) playlists (m3u8).
 /// </summary>
-internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat format, string url, HttpClient client)
+internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat? format, string? segmentFormatId, string url, HttpClient client)
     : NetworkDataProviderBase(engine, format, url, client)
 {
     private class HlsSegment
@@ -349,6 +401,7 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat format, 
     private bool _isEndList;
     private double _hlsTotalDuration;
     private double _hlsTargetDuration = 5;
+    private string? _segmentFormatId = segmentFormatId;
 
     public override async Task InitializeAsync()
     {
@@ -358,12 +411,39 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat format, 
         if (_hlsSegments.Count == 0)
             throw new InvalidOperationException("No segments found in HLS playlist.");
         
+        await DetermineSegmentFormatAsync(_cancellationTokenSource.Token);
         SampleFormat = SampleFormat.F32; // Decoded HLS is typically float
+        SampleRate = UserProvidedFormat!.Value.SampleRate;
         Length = _isEndList ? (int)(_hlsTotalDuration * SampleRate) : -1;
         CanSeek = _isEndList;
 
         // Start background buffering
         _ = BufferHlsStreamAsync(_cancellationTokenSource.Token);
+    }
+    
+    
+    private async Task DetermineSegmentFormatAsync(CancellationToken cancellationToken)
+    {
+        var firstSegmentUrl = _hlsSegments[0].Uri;
+        
+        // Download just the first few KB of the first segment to identify it.
+        var request = new HttpRequestMessage(HttpMethod.Get, firstSegmentUrl);
+        request.Headers.Range = new RangeHeaderValue(0, 8192); // 8 KB is plenty for any audio header.
+        
+        using var response = await HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        await using var segmentHeaderStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        
+        // The metadata reader needs a seekable stream.
+        var memoryStream = new MemoryStream();
+        await segmentHeaderStream.CopyToAsync(memoryStream, cancellationToken);
+        memoryStream.Position = 0;
+
+        using var decoder = Engine.CreateDecoder(memoryStream, out var detectedFormat, UserProvidedFormat);
+        
+        _segmentFormatId = "unknown_probed"; // The actual format ID is not crucial, as the decoder succeeded.
+        UserProvidedFormat = detectedFormat;
     }
     
     public override int ReadBytes(Span<float> buffer)
@@ -502,7 +582,7 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat format, 
         response.EnsureSuccessStatusCode();
 
         await using var segmentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var decoder = Engine.CreateDecoder(segmentStream, Format);
+        using var decoder = Engine.CreateDecoder(segmentStream, out _, UserProvidedFormat!.Value);
 
         var buffer = ArrayPool<float>.Shared.Rent(8192);
         try

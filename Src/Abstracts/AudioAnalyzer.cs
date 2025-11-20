@@ -6,8 +6,11 @@ namespace SoundFlow.Abstracts;
 /// <summary>
 /// Base class for audio analyzer components that extract data for visualizers.
 /// </summary>
-public abstract class AudioAnalyzer
+public abstract class AudioAnalyzer : IMidiMappable
 {
+    /// <inheritdoc />
+    public Guid Id { get; } = Guid.NewGuid();
+
     /// <summary>
     /// Gets the audio format of the analyzer.
     /// </summary>

@@ -1,4 +1,4 @@
-﻿using SoundFlow.Components;
+using SoundFlow.Components;
 using SoundFlow.Structs;
 
 namespace SoundFlow.Abstracts.Devices;
