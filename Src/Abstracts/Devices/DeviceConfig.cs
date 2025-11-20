@@ -1,4 +1,3 @@
-﻿
 namespace SoundFlow.Abstracts.Devices;
 
 /// <summary>

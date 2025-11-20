@@ -1,4 +1,8 @@
 ﻿using SoundFlow.Abstracts;
+using SoundFlow.Enums;
+using SoundFlow.Interfaces;
+using SoundFlow.Midi.Enums;
+using SoundFlow.Midi.Structs;
 using SoundFlow.Structs;
 
 namespace SoundFlow.Modifiers;
@@ -16,16 +20,19 @@ public sealed class DelayModifier : SoundModifier
     /// <summary>
     /// The feedback amount (0.0 - 1.0).
     /// </summary>
+    [ControllableParameter("Feedback", 0.0, 0.99)]
     public float Feedback { get; set; }
 
     /// <summary>
     /// The wet/dry mix (0.0 - 1.0).
     /// </summary>
+    [ControllableParameter("Mix", 0.0, 1.0)]
     public float WetMix { get; set; }
 
     /// <summary>
     /// The cutoff frequency in Hertz.
     /// </summary>
+    [ControllableParameter("Cutoff", 100.0, 20000.0, MappingScale.Logarithmic)]
     public float Cutoff { get; set; }
     
     /// <summary>
@@ -51,6 +58,29 @@ public sealed class DelayModifier : SoundModifier
         for(var i = 0; i < _format.Channels; i++)
         {
             _delayLines.Add(new float[delaySamples]);
+        }
+    }
+    
+    /// <inheritdoc />
+    public override void ProcessMidiMessage(MidiMessage message)
+    {
+        if (message.Command != MidiCommand.ControlChange) return;
+
+        var value = message.ControllerValue / 127.0f;
+
+        switch (message.ControllerNumber)
+        {
+            case 91: // Effects 1 Depth (Reverb/Chorus/Delay Mix)
+                WetMix = value;
+                break;
+            case 92: // Effects 2 Depth (Tremolo/Delay Feedback)
+                Feedback = value * 0.99f; // Map to 0.0 - 0.99
+                break;
+            case 74: // Brightness (Filter Cutoff)
+                var minLog = MathF.Log(100.0f);
+                var maxLog = MathF.Log(20000.0f);
+                Cutoff = MathF.Exp(minLog + (maxLog - minLog) * value);
+                break;
         }
     }
 

@@ -1,5 +1,4 @@
 using System.Buffers;
-using SoundFlow.Abstracts;
 using SoundFlow.Components;
 using SoundFlow.Interfaces;
 using SoundFlow.Structs;
@@ -33,10 +32,11 @@ public class AudioSegment : IDisposable
     private int _wsolaOutputBufferValidSamples;
     private int _wsolaOutputBufferReadOffset;
 
-    private long _currentSourceDataProviderPhysicalReadPos;
     private long _sourceSamplesFedToWsolaThisSourcePass;
     private int _currentSourcePassBeingFedToWsola;
     private long _currentStretchedPlayheadInSegmentLoopSamples;
+
+    private bool _isReadStateInvalid = true;
 
     /// <summary>
     /// The audio format of the audio segment.
@@ -206,12 +206,11 @@ public class AudioSegment : IDisposable
     /// </summary>
     internal void FullResetState()
     {
+        InvalidateReadState();
+
         var channels = Format.Channels > 0 ? Format.Channels : 2;
-        var sourceSampleRate = SourceDataProvider.SampleRate;
 
         // Reset data provider position to the beginning of the segment's source content.
-        _currentSourceDataProviderPhysicalReadPos = (long)(SourceStartTime.TotalSeconds * sourceSampleRate * channels);
-        if (SourceDataProvider.CanSeek) SourceDataProvider.Seek((int)_currentSourceDataProviderPhysicalReadPos);
 
         // Reset WSOLA-related counters and caches.
         _sourceSamplesFedToWsolaThisSourcePass = 0;
@@ -250,12 +249,9 @@ public class AudioSegment : IDisposable
     /// </summary>
     private void ResetForNewSourcePassForWsola()
     {
-        var channels = Format.Channels > 0 ? Format.Channels : 2;
-        var sourceSampleRate = SourceDataProvider.SampleRate;
+        InvalidateReadState();
 
         // Reset data provider position to the beginning of the source segment.
-        _currentSourceDataProviderPhysicalReadPos = (long)(SourceStartTime.TotalSeconds * sourceSampleRate * channels);
-        if (SourceDataProvider.CanSeek) SourceDataProvider.Seek((int)_currentSourceDataProviderPhysicalReadPos);
 
         // Reset counters for the new source pass.
         _sourceSamplesFedToWsolaThisSourcePass = 0;
@@ -270,7 +266,15 @@ public class AudioSegment : IDisposable
         _wsolaOutputBufferReadOffset = 0;
     }
 
-
+    /// <summary>
+    /// Marks the internal read state as invalid, forcing the next read operation
+    /// to perform a seek on the underlying data provider. This is called by the
+    /// Composition after a user-initiated seek.
+    /// </summary>
+    internal void InvalidateReadState()
+    {
+        _isReadStateInvalid = true;
+    }
 
 
     /// <summary>
@@ -804,34 +808,34 @@ public class AudioSegment : IDisposable
         samplesToReadTotal = Math.Min(samplesToReadTotal, outputBuffer.Length);
         if (samplesToReadTotal <= 0) return 0;
 
-        var samplesWrittenToOutput = 0;
         var singlePassSourceSamples = (long)(SourceDuration.TotalSeconds * sampleRate * channels);
         if (singlePassSourceSamples <= 0) return 0;
 
         // Calculate the current sample offset within the source pass for the current read request.
         var currentEffectiveSampleOffsetInSourcePass = (long)(timeOffsetInCurrentSourcePass.TotalSeconds * sampleRate * channels);
-
+        
+        // Reversed path (Handles reading from a pre-reversed cache)
         if (Settings.IsReversed)
         {
-            // Ensure reversed buffer for the current loop iteration is populated
             var cacheKeySourceLoopPass = isFeedingWsola ? _currentSourcePassBeingFedToWsola : currentSegmentLoopPassContext;
             if (_reversedBufferCache == null || _reversedBufferCacheSourceLoopPass != cacheKeySourceLoopPass)
             {
+                // Populate the reversed buffer cache for the current loop pass
                 _reversedBufferCache = ArrayPool<float>.Shared.Rent((int)singlePassSourceSamples);
                 var physicalReadStart = (long)(SourceStartTime.TotalSeconds * sampleRate * channels);
                 if (SourceDataProvider.CanSeek && SourceDataProvider.Position != physicalReadStart)
                     SourceDataProvider.Seek((int)physicalReadStart);
 
                 var cachedSamples = 0;
-                var tempChunk = ArrayPool<float>.Shared.Rent(WsolaTimeStretcher.DefaultWindowSizeFrames * channels * 2);
+                var tempChunk = ArrayPool<float>.Shared.Rent(4096 * channels);
                 try
                 {
-                    // Read the entire source segment into the cache.
+                    // Read the entire source segment into the cache
                     while (cachedSamples < singlePassSourceSamples)
                     {
                         var toReadNow = Math.Min((int)singlePassSourceSamples - cachedSamples, tempChunk.Length);
                         var r = SourceDataProvider.ReadBytes(tempChunk.AsSpan(0, toReadNow));
-                        if (r == 0) break;
+                        if (r == 0) break; // End of underlying stream
                         tempChunk.AsSpan(0, r).CopyTo(_reversedBufferCache.AsSpan(cachedSamples));
                         cachedSamples += r;
                     }
@@ -846,79 +850,68 @@ public class AudioSegment : IDisposable
 
                 ReverseBufferInterleaved(_reversedBufferCache.AsSpan(0, (int)singlePassSourceSamples), channels);
                 _reversedBufferCacheSourceLoopPass = cacheKeySourceLoopPass;
-                _currentSourceDataProviderPhysicalReadPos = physicalReadStart + singlePassSourceSamples;
             }
-            
+
             // Read from the reversed segment content buffer
-            var reversedReadStartSampleInCache = currentEffectiveSampleOffsetInSourcePass;
-            var samplesAvailableInReversedCache = singlePassSourceSamples - reversedReadStartSampleInCache;
-            var toCopyFromReversed = Math.Min(samplesToReadTotal, (int)samplesAvailableInReversedCache);
+            var samplesAvailableInReversedCache = singlePassSourceSamples - currentEffectiveSampleOffsetInSourcePass;
+            var toCopyFromReversed = (int)Math.Min(samplesToReadTotal, samplesAvailableInReversedCache);
             toCopyFromReversed = Math.Max(0, toCopyFromReversed);
 
-            if (_reversedBufferCache != null && toCopyFromReversed > 0 && reversedReadStartSampleInCache < _reversedBufferCache.Length)
+            var samplesWrittenToOutput = 0;
+            if (_reversedBufferCache != null && toCopyFromReversed > 0 && currentEffectiveSampleOffsetInSourcePass < _reversedBufferCache.Length)
             {
-                _reversedBufferCache.AsSpan((int)reversedReadStartSampleInCache, toCopyFromReversed)
+                _reversedBufferCache.AsSpan((int)currentEffectiveSampleOffsetInSourcePass, toCopyFromReversed)
                     .CopyTo(outputBuffer.Slice(0, toCopyFromReversed));
                 samplesWrittenToOutput = toCopyFromReversed;
             }
-
-            // Clear any remaining portion of the output buffer if not fully filled.
-            if (samplesWrittenToOutput < outputBuffer.Length && samplesWrittenToOutput < samplesToReadTotal)
+            
+            // Clear any remaining portion of the output buffer if not fully filled
+            if (samplesWrittenToOutput < outputBuffer.Length)
                 outputBuffer.Slice(samplesWrittenToOutput).Clear();
 
             return samplesWrittenToOutput;
         }
 
-        // Normal (non-reversed) read
-        while (samplesWrittenToOutput < samplesToReadTotal)
+        // Forward path
+        var sourceStartSamples = (long)(SourceStartTime.TotalSeconds * sampleRate * channels);
+        
+        // Calculate the absolute physical position in the underlying data provider
+        var physicalProviderTargetReadPos = sourceStartSamples + currentEffectiveSampleOffsetInSourcePass;
+        var positionDelta = Math.Abs(SourceDataProvider.Position - physicalProviderTargetReadPos);
+
+        // Force a Seek if we are misaligned by more than 32 samples, to prevent floating-point rounding errors from triggering expensive I/O seeks.
+        if (_isReadStateInvalid || (SourceDataProvider.CanSeek && positionDelta > 32))
         {
-            var physicalProviderTargetReadPos = _currentSourceDataProviderPhysicalReadPos;
-            if (SourceDataProvider.CanSeek && SourceDataProvider.Position != physicalProviderTargetReadPos) 
+            if (SourceDataProvider.CanSeek)
+            {
+                var providerLength = SourceDataProvider.Length;
+                if (providerLength > 0) 
+                    physicalProviderTargetReadPos = Math.Min(physicalProviderTargetReadPos, providerLength);
+        
                 SourceDataProvider.Seek((int)physicalProviderTargetReadPos);
-
-
-            // Calculate samples left in the current physical source pass.
-            var samplesLeftInThisSourcePass = singlePassSourceSamples - (physicalProviderTargetReadPos - (long)(SourceStartTime.TotalSeconds * sampleRate * channels));
-            var samplesToReadThisIteration = Math.Min(samplesToReadTotal - samplesWrittenToOutput, (int)samplesLeftInThisSourcePass);
-            samplesToReadThisIteration = Math.Max(0, samplesToReadThisIteration);
-
-
-            if (samplesToReadThisIteration <= 0)
-            {
-                // If current pass is exhausted, handle looping.
-                if (IsSegmentLoopEffectivelyInfinite(isFeedingWsola ? _currentSourcePassBeingFedToWsola : currentSegmentLoopPassContext))
-                {
-                    _currentSourceDataProviderPhysicalReadPos = (long)(SourceStartTime.TotalSeconds * sampleRate * channels);
-                    if (isFeedingWsola) _currentSourcePassBeingFedToWsola++;
-                    continue;
-                }
-
-                break;
             }
-
-            // Read samples from the source data provider.
-            var readCount = SourceDataProvider.ReadBytes(outputBuffer.Slice(samplesWrittenToOutput, samplesToReadThisIteration));
-
-            if (readCount == 0)
-            {
-                if (IsSegmentLoopEffectivelyInfinite(isFeedingWsola ? _currentSourcePassBeingFedToWsola : currentSegmentLoopPassContext))
-                {
-                    _currentSourceDataProviderPhysicalReadPos = (long)(SourceStartTime.TotalSeconds * sampleRate * channels);
-                    if (SourceDataProvider.CanSeek) SourceDataProvider.Seek((int)_currentSourceDataProviderPhysicalReadPos);
-                    if (isFeedingWsola) _currentSourcePassBeingFedToWsola++;
-                    continue;
-                }
-
-                if (samplesWrittenToOutput < outputBuffer.Length && samplesWrittenToOutput < samplesToReadTotal)
-                    outputBuffer.Slice(samplesWrittenToOutput).Clear();
-                break;
-            }
-
-            _currentSourceDataProviderPhysicalReadPos += readCount;
-            samplesWrittenToOutput += readCount;
+            _isReadStateInvalid = false;
         }
 
-        return samplesWrittenToOutput;
+        // We can only read what's left in this single pass of the source segment
+        var samplesLeftInThisSourcePass = singlePassSourceSamples - currentEffectiveSampleOffsetInSourcePass;
+        var samplesToReadThisIteration = (int)Math.Min(samplesToReadTotal, samplesLeftInThisSourcePass);
+
+        if (samplesToReadThisIteration <= 0)
+        {
+            outputBuffer.Clear();
+            return 0;
+        }
+        
+        // Perform the read
+        var readCount = SourceDataProvider.ReadBytes(outputBuffer.Slice(0, samplesToReadThisIteration));
+
+        // Clear the rest of the buffer if we didn't fill it (because we hit the end of the stream)
+        if (readCount < samplesToReadThisIteration) 
+            outputBuffer.Slice(readCount, samplesToReadThisIteration - readCount).Clear();
+
+        // Return the number of samples actually placed in the buffer
+        return readCount;
     }
 
     /// <summary>

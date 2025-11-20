@@ -1,4 +1,5 @@
 using System.Buffers;
+using SoundFlow.Interfaces;
 
 namespace SoundFlow.Editing;
 
@@ -6,12 +7,15 @@ namespace SoundFlow.Editing;
 /// Represents a single audio track within a composition, containing a collection of audio segments
 /// and applying track-level settings like volume, pan, mute, and solo.
 /// </summary>
-public class Track
+public class Track : IMidiMappable
 {
     private string _name;
     private TrackSettings _settings;
     private Composition? _parentComposition;
     
+    /// <inheritdoc />
+    public Guid Id { get; } = Guid.NewGuid();
+
     /// <summary>
     /// Gets or sets the name of the track.
     /// </summary>
@@ -41,8 +45,11 @@ public class Track
         set
         {
             if (_settings == value) return;
+            
+            ParentComposition?.UnregisterMappableObject(_settings);
             _settings = value ?? throw new ArgumentNullException(nameof(value), "Settings cannot be null.");
             _settings.ParentTrack = this;
+            ParentComposition?.RegisterMappableObject(_settings);
             MarkDirty();
         }
     }
@@ -87,6 +94,7 @@ public class Track
     {
         segment.ParentTrack = this;
         segment.Settings.ParentSegment = segment;
+        ParentComposition?.RegisterMappableObject(segment.Settings);
         Segments.Add(segment);
         SortSegments();
         MarkDirty();
@@ -103,6 +111,7 @@ public class Track
     /// <returns>True if the segment was successfully removed, false otherwise.</returns>
     public bool RemoveSegment(AudioSegment segment, bool shiftSubsequent = false)
     {
+        ParentComposition?.UnregisterMappableObject(segment.Settings);
         segment.ParentTrack = null;
         segment.Settings.ParentSegment = null;
         var removed = Segments.Remove(segment);
@@ -142,6 +151,7 @@ public class Track
     {
         segmentToInsert.ParentTrack = this;
         segmentToInsert.Settings.ParentSegment = segmentToInsert;
+        ParentComposition?.RegisterMappableObject(segmentToInsert.Settings);
         if (shiftSubsequent)
         {
             var insertedDuration = segmentToInsert.EffectiveDurationOnTimeline;

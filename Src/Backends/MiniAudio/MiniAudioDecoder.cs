@@ -2,8 +2,8 @@ using System.Buffers;
 using System.Runtime.InteropServices;
 using SoundFlow.Backends.MiniAudio.Enums;
 using SoundFlow.Enums;
-using SoundFlow.Exceptions;
 using SoundFlow.Interfaces;
+using SoundFlow.Utils;
 
 namespace SoundFlow.Backends.MiniAudio;
 
@@ -14,10 +14,13 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
 {
     private readonly nint _decoder;
     private readonly Stream _stream;
+    
+    // Keep references to delegates to prevent GC collection while native code uses them
     private readonly Native.BufferProcessingCallback _readCallback;
     private readonly Native.SeekCallback _seekCallbackCallback;
+    
     private bool _endOfStreamReached;
-    private byte[] _readBuffer = [];
+    private byte[]? _rentedReadBuffer;
     private readonly object _syncLock = new();
 
     /// <summary>
@@ -37,13 +40,21 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
         var configPtr = Native.AllocateDecoderConfig(SampleFormat, (uint)Channels, (uint)SampleRate);
 
         _decoder = Native.AllocateDecoder();
-        var result = Native.DecoderInit(_readCallback = ReadCallback, _seekCallbackCallback = SeekCallback, nint.Zero, configPtr, _decoder);
+        
+        // Store delegates in fields to prevent GC collection
+        _readCallback = ReadCallback;
+        _seekCallbackCallback = SeekCallback;
+
+        var result = Native.DecoderInit(_readCallback, _seekCallbackCallback, nint.Zero, configPtr, _decoder);
         Native.Free(configPtr);
 
-        if (result != Result.Success) throw new BackendException("MiniAudio", result, "Unable to initialize decoder.");
+        if (result != MiniAudioResult.Success) 
+            throw new MiniaudioException("MiniAudio", result, "Unable to initialize decoder.");
 
         result = Native.DecoderGetLengthInPcmFrames(_decoder, out var length);
-        if (result != Result.Success) throw new BackendException("MiniAudio", result, "Unable to get decoder length.");
+        if (result != MiniAudioResult.Success) 
+            throw new MiniaudioException("MiniAudio", result, "Unable to get decoder length.");
+        
         Length = (int)length * Channels;
         _endOfStreamReached = false;
     }
@@ -81,43 +92,40 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
             
             var buffer = GetBufferIfNeeded(samples.Length);
             var span = buffer ?? MemoryMarshal.AsBytes(samples);
-            ulong framesRead;
-            Result result;
 
             fixed (byte* nativeBuffer = span)
             {
-                result = Native.DecoderReadPcmFrames(_decoder, (nint)nativeBuffer, framesToRead, out framesRead);
-            }
+                var result = Native.DecoderReadPcmFrames(_decoder, (nint)nativeBuffer, framesToRead, out var framesRead);
 
+                // If we reached the end of the stream, set the flag and return 0
+                if (result == MiniAudioResult.AtEnd)
+                {
+                    _endOfStreamReached = true;
+                }
+                // Check for actual errors, ignoring the clean AtEnd result.
+                else if (result != MiniAudioResult.Success)
+                {
+                    _endOfStreamReached = true;
+                    return 0;
+                }
 
-            // If we reached the end of the stream, set the flag and return 0
-            if (result == Result.AtEnd)
-            {
-                _endOfStreamReached = true;
-            }
-            // Check for actual errors, ignoring the clean AtEnd result.
-            else if (result != Result.Success) 
-            {
-                _endOfStreamReached = true;
-                return 0;
-            }
+                if (framesRead == 0 && _endOfStreamReached)
+                {
+                    EndOfStreamReached?.Invoke(this, EventArgs.Empty);
+                }
 
-            if (framesRead == 0 && _endOfStreamReached)
-            {
-                EndOfStreamReached?.Invoke(this, EventArgs.Empty);
-            }
+                if (framesRead == 0)
+                {
+                    // If we got here, it means no frames were read, and it wasn't an error, so we're done.
+                    if (buffer is not null) ArrayPool<byte>.Shared.Return(buffer);
+                    return 0;
+                }
 
-            if (framesRead == 0)
-            {
-                // If we got here, it means no frames were read, and it wasn't an error, so we're done.
+                if (SampleFormat is not SampleFormat.F32) ConvertToFloat(samples, framesRead, span);
                 if (buffer is not null) ArrayPool<byte>.Shared.Return(buffer);
-                return 0;
-            }
-            
-            if (SampleFormat is not SampleFormat.F32) ConvertToFloat(samples, framesRead, span);
-            if (buffer is not null) ArrayPool<byte>.Shared.Return(buffer);
 
-            return (int)framesRead * Channels;
+                return (int)framesRead * Channels;
+            }
         }
     }
 
@@ -176,17 +184,17 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
     {
         lock (_syncLock)
         {
-            Result result;
+            MiniAudioResult miniAudioResult;
             if (Length == 0)
             {
-                result = Native.DecoderGetLengthInPcmFrames(_decoder, out var length);
-                if (result != Result.Success || (int)length == 0) return false;
+                miniAudioResult = Native.DecoderGetLengthInPcmFrames(_decoder, out var length);
+                if (miniAudioResult != MiniAudioResult.Success || (int)length == 0) return false;
                 Length = (int)length * Channels;
             }
 
             _endOfStreamReached = false;
-            result = Native.DecoderSeekToPcmFrame(_decoder, (ulong)(offset / Channels));
-            return result == Result.Success;
+            miniAudioResult = Native.DecoderSeekToPcmFrame(_decoder, (ulong)(offset / Channels));
+            return miniAudioResult == MiniAudioResult.Success;
         }
     }
 
@@ -204,50 +212,81 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
         Dispose(false);
     }
 
-    private Result ReadCallback(nint pDecoder, nint pBufferOut, ulong bytesToRead, out ulong* pBytesRead)
+    private MiniAudioResult ReadCallback(nint pDecoder, nint pBufferOut, ulong bytesToRead, out ulong pBytesRead)
     {
-        lock (_syncLock)
+        try
         {
-            if (!_stream.CanRead)
+            lock (_syncLock)
             {
-                pBytesRead = (ulong*)0;
-                return Result.NoDataAvailable;
-            }
-
-            // Read the next chunk of bytes
-            var size = (int)bytesToRead;
-            if (_readBuffer.Length < size)
-                Array.Resize(ref _readBuffer, size);
-
-            var read = _stream.Read(_readBuffer, 0, size);
-            if (read > 0)
-            {
-            	// Copy from read buffer to write buffer
-                fixed (byte* pReadBuffer = _readBuffer)
+                if (!_stream.CanRead)
                 {
-                    Buffer.MemoryCopy(pReadBuffer, (void*)pBufferOut, size, read);
+                    pBytesRead = 0;
+                    return MiniAudioResult.NoDataAvailable;
                 }
+
+                var size = (int)bytesToRead;
+                
+                // Use ArrayPool to avoid allocating a new buffer on every read
+                if (_rentedReadBuffer == null || _rentedReadBuffer.Length < size)
+                {
+                    if (_rentedReadBuffer != null)
+                        ArrayPool<byte>.Shared.Return(_rentedReadBuffer);
+                    
+                    _rentedReadBuffer = ArrayPool<byte>.Shared.Rent(size);
+                }
+
+                var read = _stream.Read(_rentedReadBuffer, 0, size);
+                
+                if (read > 0)
+                {
+                    fixed (byte* pReadBuffer = _rentedReadBuffer)
+                    {
+                        Buffer.MemoryCopy(pReadBuffer, (void*)pBufferOut, size, read);
+                    }
+                }
+
+                pBytesRead = (ulong)read;
+                return MiniAudioResult.Success;
             }
-
-            // Clear read buffer
-            Array.Clear(_readBuffer, 0, _readBuffer.Length);
-
-            pBytesRead = (ulong*)read;
-            return Result.Success;
+        }
+        catch (Exception)
+        {
+            // Swallow exception to prevent runtime crash, signal I/O error to miniaudio
+            pBytesRead = 0;
+            Log.Critical("[MiniAudioDecoder] Failed to read PCM frames from decoder.");
+            return MiniAudioResult.IoError;
         }
     }
 
-    private Result SeekCallback(nint _, long byteOffset, SeekPoint point)
+    private MiniAudioResult SeekCallback(nint _, long byteOffset, SeekPoint point)
     {
-        lock (_syncLock)
+        try
         {
-            if (!_stream.CanSeek)
-                return Result.NoDataAvailable;
+            lock (_syncLock)
+            {
+                if (!_stream.CanSeek)
+                    return MiniAudioResult.NoDataAvailable;
 
-            if (byteOffset >= 0 && byteOffset < _stream.Length - 1)
-                _stream.Seek(byteOffset, point == SeekPoint.FromCurrent ? SeekOrigin.Current : SeekOrigin.Begin);
+                // Basic bounds check to prevent seeking past EOF if stream supports Length
+                try 
+                {
+                    if (byteOffset >= 0 && byteOffset < _stream.Length - 1)
+                        _stream.Seek(byteOffset, point == SeekPoint.FromCurrent ? SeekOrigin.Current : SeekOrigin.Begin);
+                }
+                catch (NotSupportedException)
+                {
+                    // Some streams claim CanSeek but throw on Length or Position
+                    Log.Critical("[MiniAudioDecoder] Stream does not support seeking.");
+                    return MiniAudioResult.InvalidOperation;
+                }
 
-            return Result.Success;
+                return MiniAudioResult.Success;
+            }
+        }
+        catch (Exception)
+        {
+            Log.Critical("[MiniAudioDecoder] Failed to seek stream.");
+            return MiniAudioResult.IoError;
         }
     }
 
@@ -257,12 +296,19 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
         {
             if (IsDisposed) return;
 
-            // keep delegates alive
-            GC.KeepAlive(_readCallback);
-            GC.KeepAlive(_seekCallbackCallback);
+            // Return rented buffer if it exists
+            if (_rentedReadBuffer != null)
+            {
+                ArrayPool<byte>.Shared.Return(_rentedReadBuffer);
+                _rentedReadBuffer = null;
+            }
 
             Native.DecoderUninit(_decoder);
             Native.Free(_decoder);
+
+            // Keep delegates alive until after Uninit to prevent GC during callback (defensive)
+            GC.KeepAlive(_readCallback);
+            GC.KeepAlive(_seekCallbackCallback);
 
             IsDisposed = true;
         }

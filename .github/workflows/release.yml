@@ -1,0 +1,271 @@
+﻿name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'The semantic version for the release (e.g., 1.2.3)'
+        required: true
+        type: string
+      publish_to_nuget:
+        description: 'Push packages to NuGet.org? (true/false)'
+        required: true
+        type: boolean
+        default: false
+      push_to_release_branch:
+        description: 'Create and push changes (version update) to a release/vX.X.X branch?'
+        required: true
+        type: boolean
+        default: true
+      release_soundflow_main:
+        description: 'Build and release the main SoundFlow package? (Includes Miniaudio native libs)'
+        required: true
+        type: boolean
+        default: true
+      release_ffmpeg:
+        description: 'Build and release the SoundFlow.Codecs.FFMpeg package?'
+        required: true
+        type: boolean
+        default: true
+      release_webrtc:
+        description: 'Build and release the SoundFlow.Extensions.WebRtc.Apm package?'
+        required: true
+        type: boolean
+        default: true
+      release_portmidi:
+        description: 'Build and release the SoundFlow.Midi.PortMidi package?'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    name: Build, Package, and Release
+    # Only run the job if at least one package is selected
+    if: >
+      inputs.release_soundflow_main == true ||
+      inputs.release_ffmpeg == true ||
+      inputs.release_webrtc == true ||
+      inputs.release_portmidi == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Trigger and Wait for Native Builds
+        id: native_builds
+        # This step runs if any package requiring native libs is selected.
+        if: >
+          inputs.release_soundflow_main == true ||
+          inputs.release_ffmpeg == true ||
+          inputs.release_webrtc == true ||
+          inputs.release_portmidi == true
+        env:
+          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+          BRANCH_REF: ${{ github.ref_name }}
+          # Pass inputs to the script
+          # Miniaudio is triggered if the main SoundFlow package is being released.
+          RELEASE_MINIAUDIO: ${{ inputs.release_soundflow_main }}
+          RELEASE_FFMPEG: ${{ inputs.release_ffmpeg }}
+          RELEASE_WEBRTC: ${{ inputs.release_webrtc }}
+          RELEASE_PORTMIDI: ${{ inputs.release_portmidi }}
+        run: |
+          set -e # Exit immediately if a command fails
+          
+          declare -A WORKFLOWS_TO_RUN
+          if [[ "$RELEASE_MINIAUDIO" == "true" ]]; then WORKFLOWS_TO_RUN["miniaudio"]="build-miniaudio.yml"; fi
+          if [[ "$RELEASE_WEBRTC" == "true" ]]; then WORKFLOWS_TO_RUN["webrtc"]="build-extensions-apm.yml"; fi
+          if [[ "$RELEASE_FFMPEG" == "true" ]]; then WORKFLOWS_TO_RUN["ffmpeg"]="build-ffmpeg.yml"; fi
+          if [[ "$RELEASE_PORTMIDI" == "true" ]]; then WORKFLOWS_TO_RUN["portmidi"]="build-portmidi.yml"; fi
+
+          if [ ${#WORKFLOWS_TO_RUN[@]} -eq 0 ]; then
+            echo "No native builds required for selected packages. Skipping."
+            exit 0
+          fi
+          
+          declare -A RUN_IDS
+          
+          echo "Triggering ${#WORKFLOWS_TO_RUN[@]} native build workflow(s) on ref: $BRANCH_REF"
+          for key in "${!WORKFLOWS_TO_RUN[@]}"; do
+            gh workflow run "${WORKFLOWS_TO_RUN[$key]}" --ref "$BRANCH_REF" &
+          done
+          wait
+          
+          echo "All selected workflows triggered. Waiting for API..."
+          sleep 15
+          
+          echo "Fetching run IDs for commit ${{ github.sha }}..."
+          for key in "${!WORKFLOWS_TO_RUN[@]}"; do
+            run_id=$(gh run list --workflow="${WORKFLOWS_TO_RUN[$key]}" --branch "$BRANCH_REF" --json databaseId,headSha -q '.[] | select(.headSha=="${{ github.sha }}") | .databaseId' | head -n 1)
+            if [[ -z "$run_id" ]]; then
+              echo "Error: Could not find run ID for ${WORKFLOWS_TO_RUN[$key]}."
+              exit 1
+            fi
+            RUN_IDS[$key]=$run_id
+            echo "  => Found Run ID for $key: ${RUN_IDS[$key]}"
+            # Set output for this specific run
+            echo "${key}_run_id=${RUN_IDS[$key]}" >> "$GITHUB_OUTPUT"
+          done
+          
+          echo "Waiting for all build workflows to complete..."
+          for id in "${RUN_IDS[@]}"; do
+            gh run watch "$id" --interval 60 &
+          done
+          wait
+          
+          echo "Checking final conclusions..."
+          all_successful=true
+          for key in "${!RUN_IDS[@]}"; do
+            conclusion=$(gh run view "${RUN_IDS[$key]}" --json conclusion -q .conclusion)
+            echo "  => ${WORKFLOWS_TO_RUN[$key]} conclusion: $conclusion"
+            if [[ "$conclusion" != "success" ]]; then
+              all_successful=false
+            fi
+          done
+
+          if [[ "$all_successful" != true ]]; then
+            echo "One or more native build workflows failed."
+            exit 1
+          fi
+          echo "All triggered native build workflows completed successfully."
+
+      - name: Download Miniaudio Artifact
+        if: inputs.release_soundflow_main == true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: build-miniaudio.yml
+          name: miniaudio-native-libraries
+          path: native-artifacts/miniaudio-native-libraries
+          run_id: ${{ steps.native_builds.outputs.miniaudio_run_id }}
+
+      - name: Download WebRTC APM Artifact
+        if: inputs.release_webrtc == true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: build-extensions-apm.yml
+          name: webrtc-audio-processing
+          path: native-artifacts/webrtc-audio-processing
+          run_id: ${{ steps.native_builds.outputs.webrtc_run_id }}
+
+      - name: Download FFmpeg Artifact
+        if: inputs.release_ffmpeg == true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: build-ffmpeg.yml
+          name: soundflow-ffmpeg-runtimes
+          path: native-artifacts/soundflow-ffmpeg-runtimes
+          run_id: ${{ steps.native_builds.outputs.ffmpeg_run_id }}
+
+      - name: Download PortMidi Artifact
+        if: inputs.release_portmidi == true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: build-portmidi.yml
+          name: portmidi-native-libraries
+          path: native-artifacts/portmidi-native-libraries
+          run_id: ${{ steps.native_builds.outputs.portmidi_run_id }}
+
+      - name: Extract and Place Runtimes
+        if: >
+          inputs.release_soundflow_main == true ||
+          inputs.release_ffmpeg == true ||
+          inputs.release_webrtc == true ||
+          inputs.release_portmidi == true
+        run: |
+          set -e
+          # Process only the artifacts that were downloaded
+          unzip_and_place() {
+            local artifact_name="$1"
+            local target_dir="$2"
+            local zip_file="native-artifacts/$artifact_name/$artifact_name.zip"
+
+            if [ -f "$zip_file" ]; then
+              echo "Processing $artifact_name -> $target_dir"
+              unzip -oq "$zip_file" -d temp_unzip
+              rm -rf "$target_dir"
+              mv temp_unzip/runtimes "$target_dir"
+              rm -rf temp_unzip
+            else
+              echo "Skipping $artifact_name, artifact not downloaded."
+            fi
+          }
+
+          unzip_and_place "miniaudio-native-libraries" "Src/Backends/MiniAudio/runtimes"
+          unzip_and_place "portmidi-native-libraries" "Midi/SoundFlow.Midi.PortMidi/runtimes"
+          unzip_and_place "webrtc-audio-processing" "Extensions/SoundFlow.Extensions.WebRtc.Apm/runtimes"
+          unzip_and_place "soundflow-ffmpeg-runtimes" "Codecs/SoundFlow.Codecs.FFMpeg/runtimes"
+
+          echo "All available runtimes have been placed."
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Update Versions and Create NuGet Packages
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -e
+          # Function to update and pack a project
+          update_and_pack() {
+            local project_file="$1"
+            echo "--- Processing $project_file ---"
+            echo "Updating version to $VERSION"
+            sed -i "s|<Version>.*</Version>|<Version>$VERSION</Version>|" "$project_file"
+            echo "Creating NuGet package"
+            dotnet pack "$project_file" --configuration Release -o ./packages
+          }
+          
+          mkdir -p ./packages
+          
+          if [[ "${{ inputs.release_soundflow_main }}" == "true" ]]; then
+            update_and_pack "Src/SoundFlow.csproj"
+          fi
+          if [[ "${{ inputs.release_ffmpeg }}" == "true" ]]; then
+            update_and_pack "Codecs/SoundFlow.Codecs.FFMpeg/SoundFlow.Codecs.FFMpeg.csproj"
+          fi
+          if [[ "${{ inputs.release_webrtc }}" == "true" ]]; then
+            update_and_pack "Extensions/SoundFlow.Extensions.WebRtc.Apm/SoundFlow.Extensions.WebRtc.Apm.csproj"
+          fi
+          if [[ "${{ inputs.release_portmidi }}" == "true" ]]; then
+            update_and_pack "Midi/SoundFlow.Midi.PortMidi/SoundFlow.Midi.PortMidi.csproj"
+          fi
+
+      - name: Push Packages to NuGet.org
+        if: inputs.publish_to_nuget == true
+        run: |
+          if [ -z "$(ls -A packages/*.nupkg 2>/dev/null)" ]; then
+            echo "No packages were created. Skipping NuGet push."
+          else
+            dotnet nuget push "packages/*.nupkg" --source "https://api.nuget.org/v3/index.json" --api-key ${{ secrets.NUGET_API_KEY }} --skip-duplicate
+          fi
+
+      - name: Upload NuGet Packages as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages-${{ inputs.version }}
+          path: ./packages/*.nupkg
+
+      - name: Commit to Release Branch, Tag, and Push
+        if: inputs.push_to_release_branch == true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b release/v${{ inputs.version }}
+          git add .
+          # Check if there are any changes to commit
+          if git diff --staged --quiet; then
+            echo "No version changes to commit. Skipping commit, tag, and push."
+          else
+            git commit -m "chore: Bump version to ${{ inputs.version }}"
+            git push origin release/v${{ inputs.version }}
+            git tag -a "v${{ inputs.version }}" -m "Release version v${{ inputs.version }}"
+            git push origin "v${{ inputs.version }}"
+          fi

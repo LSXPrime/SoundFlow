@@ -1,9 +1,7 @@
 name: Build WebRTC Audio Processing
 
 on:
-  push:
-    paths:
-      - 'Extensions/SoundFlow.Extensions.WebRtc.Apm/Native/**'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -141,7 +139,6 @@ jobs:
           elif [ "${{ matrix.rid }}" == "linux-arm64" ]; then
             sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
           fi
-
       # Android setup
       - name: Set up Android NDK
         if: matrix.platform == 'Android'
@@ -157,7 +154,6 @@ jobs:
         run: |
           echo "NDK_ROOT=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
           echo "TOOLCHAIN_ROOT=${NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV
-
       # Print the NDK Root
       - name: Print NDK Root
         if: matrix.platform == 'Android'
@@ -168,14 +164,11 @@ jobs:
           # List contents of the build directory before copying
           echo "Listing contents of Toolchain: $TOOLCHAIN_ROOT"
           ls -l "/opt/hostedtoolcache/ndk/r26d/x64/toolchains/llvm/prebuilt/linux-x86_64/bin/"
-
-
       - name: Install Xcode Command Line Tools (iOS)
         if: matrix.platform == 'iOS'
         run: |
           xcode-select --install || true
           sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-
       # Install Homebrew LLVM for iOS builds
       - name: Install Homebrew LLVM (IOS)
         if: matrix.platform == 'iOS'
@@ -185,12 +178,11 @@ jobs:
           echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
           echo "/opt/homebrew/opt/llvm/lib" >> $GITHUB_PATH
           echo 'export PATH="/opt/homebrew/opt/llvm/bin:$PATH"' >> /Users/runner/.bash_profile
-
       # Configure Meson
       - name: Configure Meson
         shell: bash
         run: |
-          cd Extensions/SoundFlow.Extensions.WebRtc.Apm/Native/
+          cd Native/webrtc-audio-processing/
           BUILD_DIR="build_${{ matrix.rid }}"
           EXTRA_ARGS="--buildtype=release"
           
@@ -199,19 +191,17 @@ jobs:
           else
             meson setup $BUILD_DIR $EXTRA_ARGS
           fi
-
       - name: Build with Ninja
         shell: bash
         run: |
-          cd Extensions/SoundFlow.Extensions.WebRtc.Apm/Native/
+          cd Native/webrtc-audio-processing/
           BUILD_DIR="build_${{ matrix.rid }}"
           ninja -C $BUILD_DIR
-
       # Package the artifacts
       - name: Copy and rename artifacts
         shell: bash
         run: |
-          cd Extensions/SoundFlow.Extensions.WebRtc.Apm/Native/
+          cd Native/webrtc-audio-processing/
           BUILD_DIR="build_${{ matrix.rid }}/webrtc/modules/audio_processing"
           OUTPUT_DIR="runtimes/${{ matrix.rid }}/native"
           
@@ -230,27 +220,24 @@ jobs:
           
           echo "Copied artifact to:"
           ls -l "$OUTPUT_DIR"
-
       # Dependency analysis
       - name: Analyze Dependencies (Windows)
         if: matrix.platform == 'Windows'
         shell: bash
         run: |
-          cd Extensions/SoundFlow.Extensions.WebRtc.Apm/Native/
+          cd Native/webrtc-audio-processing/
           echo "Dependencies for Windows (MinGW):"
           objdump -p "runtimes/${{ matrix.rid }}/native/webrtc-apm.dll" | grep "DLL Name:"
           echo "Imported symbols:"
           nm -g "runtimes/${{ matrix.rid }}/native/webrtc-apm.dll" | grep " T "
-
       - name: Analyze Dependencies (Linux)
         if: matrix.os == 'ubuntu-latest' && matrix.platform == 'Linux'
         shell: bash
         run: |
-          cd Extensions/SoundFlow.Extensions.WebRtc.Apm/Native/
+          cd Native/webrtc-audio-processing/
           LIB_PATH="runtimes/${{ matrix.rid }}/native/libwebrtc-apm.so"
           echo "=== Library Information ==="
           file "$LIB_PATH"
-
           echo -e "\n=== Dependencies ==="
           if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
             ldd "$LIB_PATH" || true
@@ -258,7 +245,6 @@ jobs:
             # For ARM architectures, use readelf instead of ldd
             readelf -d "$LIB_PATH" | grep "NEEDED" || true
           fi
-
           echo -e "\n=== Symbols ==="
           if [[ "${{ matrix.arch }}" == "x86_64" || "${{ matrix.arch }}" == "aarch64" ]]; then
             nm -g "$LIB_PATH" | grep " T " || true
@@ -266,48 +252,43 @@ jobs:
             # For armv7l, use the correct cross-arch nm
             arm-linux-gnueabihf-nm -g "$LIB_PATH" | grep " T " || true
           fi
-
           echo -e "\n=== SONAME ==="
           readelf -d "$LIB_PATH" | grep "SONAME" || true
-
       - name: Analyze Dependencies (Android)
         if: matrix.platform == 'Android'
         shell: bash
         run: |
-          cd Extensions/SoundFlow.Extensions.WebRtc.Apm/Native/
+          cd Native/webrtc-audio-processing/
           LIB_PATH="runtimes/${{ matrix.rid }}/native/libwebrtc-apm.so"
           echo "Dependencies for Android:"
           readelf -d "$LIB_PATH"
           echo "Symbols:"
           nm -g "$LIB_PATH" | grep " T "
-
       - name: Analyze Dependencies (macOS)
         if: matrix.os == 'macos-latest' && matrix.platform == 'macOS'
         shell: bash
         run: |
-          cd Extensions/SoundFlow.Extensions.WebRtc.Apm/Native/
+          cd Native/webrtc-audio-processing/
           LIB_PATH="runtimes/${{ matrix.rid }}/native/libwebrtc-apm.dylib"
           echo "Dependencies for macOS:"
           otool -L "$LIB_PATH"
           echo "Symbols:"
           nm -g "$LIB_PATH" | grep " T "
-
       - name: Analyze Dependencies (iOS)
         if: matrix.platform == 'iOS'
         shell: bash
         run: |
-          cd Extensions/SoundFlow.Extensions.WebRtc.Apm/Native/
+          cd Native/webrtc-audio-processing/
           LIB_PATH="runtimes/${{ matrix.rid }}/native/libwebrtc-apm.dylib"
           echo "Dependencies for iOS:"
           otool -L "$LIB_PATH"
           echo "Symbols:"
           nm -g "$LIB_PATH" | grep " T "
-
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.rid }}
-          path: Extensions/SoundFlow.Extensions.WebRtc.Apm/Native/runtimes/${{ matrix.rid }}
+          path: Native/webrtc-audio-processing/runtimes/${{ matrix.rid }}
 
   package:
     needs: build
@@ -323,7 +304,6 @@ jobs:
           mkdir -p runtimes
           cp -r artifacts/* runtimes/
           zip -r webrtc-audio-processing.zip runtimes
-
       - name: Upload final package
         uses: actions/upload-artifact@v4
         with:

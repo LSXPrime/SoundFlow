@@ -1,4 +1,8 @@
 ﻿using SoundFlow.Abstracts;
+using SoundFlow.Enums;
+using SoundFlow.Interfaces;
+using SoundFlow.Midi.Enums;
+using SoundFlow.Midi.Structs;
 using SoundFlow.Structs;
 
 namespace SoundFlow.Modifiers;
@@ -27,10 +31,23 @@ public class LowPassModifier : SoundModifier
     /// <summary>
     /// Gets or sets the cutoff frequency of the filter.
     /// </summary>
+    [ControllableParameter("Cutoff", 20.0, 20000.0, MappingScale.Logarithmic)]
     public float CutoffFrequency
     {
         get => _cutoffFrequency;
         set => _cutoffFrequency = Math.Max(20, value); // Minimum 20Hz
+    }
+    
+    /// <inheritdoc />
+    public override void ProcessMidiMessage(MidiMessage message)
+    {
+        if (message.Command == MidiCommand.ControlChange && message.ControllerNumber == 74)
+        {
+            var normalizedCutoff = message.ControllerValue / 127.0f;
+            var minLog = MathF.Log(20.0f);
+            var maxLog = MathF.Log(20000.0f);
+            CutoffFrequency = MathF.Exp(minLog + (maxLog - minLog) * normalizedCutoff);
+        }
     }
 
     /// <inheritdoc />

@@ -22,13 +22,17 @@ internal sealed class MiniAudioPlaybackDevice : AudioPlaybackDevice
 
     public override void Start()
     {
+        if (IsRunning) return;
         _device.Start();
+        Engine.RaiseDeviceStarted(this);
         IsRunning = true;
     }
 
     public override void Stop()
     {
+        if (!IsRunning) return;
         _device.Stop();
+        Engine.RaiseDeviceStopped(this);
         IsRunning = false;
     }
 
@@ -50,6 +54,10 @@ internal sealed class MiniAudioPlaybackDevice : AudioPlaybackDevice
 
         var length = (int)frameCount * Format.Channels;
         if (length <= 0) return;
+        
+        // Update the cached EventArgs and notify engine
+        CachedRenderEventArgs.FrameCount = (int)frameCount;
+        Engine.RaiseAudioFramesRendered(CachedRenderEventArgs);
 
         // Fast path: If the device format is F32, we can process directly on the output buffer.
         if (device.Format.Format == SampleFormat.F32)

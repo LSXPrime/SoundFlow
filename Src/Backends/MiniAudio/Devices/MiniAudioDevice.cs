@@ -52,11 +52,13 @@ internal sealed class MiniAudioDevice : IDisposable
             var result = Native.DeviceInit(context, deviceConfig, _device);
             Native.Free(deviceConfig);
 
-            if (result != Result.Success)
+            if (result != MiniAudioResult.Success)
             {
                 Native.Free(_device);
                 throw new InvalidOperationException($"Unable to init device {info?.Name ?? "Default Device"}. Result: {result}");
             }
+            
+            MiniAudioEngine.RegisterEngineHandle(_device, Engine);
         }
         finally
         {
@@ -80,24 +82,22 @@ internal sealed class MiniAudioDevice : IDisposable
             NoPreSilencedOutputBuffer = maConfig.NoPreSilencedOutputBuffer,
             NoClip = maConfig.NoClip,
             NoDisableDenormals = maConfig.NoDisableDenormals,
-            NoFixedSizedCallback = maConfig.NoFixedSizedCallback
+            NoFixedSizedCallback = maConfig.NoFixedSizedCallback,
+            Playback = MarshalStruct(new SfDeviceSubConfig
+            {
+                Format = Format.Format,
+                Channels = (uint)Format.Channels,
+                pDeviceID = Info?.Id ?? nint.Zero,
+                ShareMode = maConfig.Playback.ShareMode
+            }, handles),
+            Capture = MarshalStruct(new SfDeviceSubConfig
+            {
+                Format = Format.Format,
+                Channels = (uint)Format.Channels,
+                pDeviceID = Info?.Id ?? nint.Zero,
+                ShareMode = maConfig.Capture.ShareMode
+            }, handles)
         };
-
-        mainDto.Playback = MarshalStruct(new SfDeviceSubConfig
-        {
-            Format = Format.Format,
-            Channels = (uint)Format.Channels,
-            pDeviceID = Info?.Id ?? nint.Zero,
-            ShareMode = maConfig.Playback.ShareMode
-        }, handles);
-
-        mainDto.Capture = MarshalStruct(new SfDeviceSubConfig
-        {
-            Format = Format.Format,
-            Channels = (uint)Format.Channels,
-            pDeviceID = Info?.Id ?? nint.Zero,
-            ShareMode = maConfig.Capture.ShareMode
-        }, handles);
 
         if (maConfig.Wasapi != null)
         {
@@ -188,7 +188,11 @@ internal sealed class MiniAudioDevice : IDisposable
     public void Dispose()
     {
         Stop();
+        
+        // Remove the device from the engine's instance map.
         Engine.UnregisterDevice(_device);
+        MiniAudioEngine.UnregisterEngineHandle(_device);
+
         Native.DeviceUninit(_device);
         Native.Free(_device);
     }

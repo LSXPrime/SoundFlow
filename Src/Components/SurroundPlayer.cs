@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Numerics;
 using SoundFlow.Abstracts;
 using SoundFlow.Interfaces;
@@ -135,7 +136,7 @@ public sealed class SurroundPlayer : SoundPlayerBase
     // Surround sound parameters (predefined configurations)
     private readonly Dictionary<SpeakerConfiguration, SurroundConfiguration> _predefinedConfigurations = new();
 
-    private float[] _delayLines = [];
+    private float[][] _delayLines = []; // 2D array for isolated delay buffers per speaker
     private int[] _delayIndices = [];
     private float[][] _panningFactors = []; // 2D array of [virtualSpeaker][outputChannel]
     private bool _vbapPanningFactorsDirty = true;
@@ -174,24 +175,30 @@ public sealed class SurroundPlayer : SoundPlayerBase
         // 5.1 Surround
         _predefinedConfigurations.Add(SpeakerConfiguration.Surround51, new SurroundConfiguration(
             "Surround 5.1",
-            [1f, 1f, 1f, 0.7f, 0.7f, 0.5f],
+            [1f, 1f, 1f, 0.7f, 0.7f, 0.5f], // L, R, C, SL, SR, LFE
             [0f, 0f, 0f, 15f, 15f, 5f],
             [
                 new Vector2(-1f, 0f), new Vector2(1f, 0f), new Vector2(0f, 0f), new Vector2(-0.8f, -1f),
                 new Vector2(0.8f, -1f), new Vector2(0f, -1.5f)
-            ]
-        ));
+            ])
+            {
+                LfeChannelIndex = 5
+            }
+        );
 
         // 7.1 Surround
         _predefinedConfigurations.Add(SpeakerConfiguration.Surround71, new SurroundConfiguration(
             "Surround 7.1",
-            [1f, 1f, 1f, 0.7f, 0.7f, 0.7f, 0.7f, 0.5f],
+            [1f, 1f, 1f, 0.7f, 0.7f, 0.7f, 0.7f, 0.5f], // L, R, C, SL, SR, SideL, SideR, LFE
             [0f, 0f, 0f, 15f, 15f, 5f, 5f, 5f],
             [
                 new Vector2(-1f, 0f), new Vector2(1f, 0f), new Vector2(0f, 0f), new Vector2(-0.8f, -1f),
                 new Vector2(0.8f, -1f), new Vector2(-1f, -1.5f), new Vector2(1f, -1.5f), new Vector2(0f, -2f)
-            ]
-        ));
+            ])
+            {
+                LfeChannelIndex = 7
+            }
+        );
     }
 
     /// <summary>
@@ -216,10 +223,16 @@ public sealed class SurroundPlayer : SoundPlayerBase
 
     private void InitializeDelayLines()
     {
-        var numChannels = _currentConfiguration.SpeakerPositions.Length;
-        var maxDelaySamples = (int)(_currentConfiguration.Delays.Max() * Format.SampleRate / 1000f);
-        _delayLines = new float[numChannels * (maxDelaySamples + 1)];
-        _delayIndices = new int[numChannels];
+        var numSpeakers = _currentConfiguration.SpeakerPositions.Length;
+        _delayLines = new float[numSpeakers][];
+        _delayIndices = new int[numSpeakers];
+
+        for (var i = 0; i < numSpeakers; i++)
+        {
+            var delaySamples = (int)(_currentConfiguration.Delays[i] * Format.SampleRate / 1000f);
+            // Each speaker gets its own dedicated buffer. Add 1 for safety with zero-length delays.
+            _delayLines[i] = new float[delaySamples + 1];
+        }
     }
 
     /// <inheritdoc />
@@ -229,55 +242,171 @@ public sealed class SurroundPlayer : SoundPlayerBase
         ProcessSurroundAudio(output, channels);
     }
 
-    private void ProcessSurroundAudio(Span<float> buffer, int channels)
+    private void ProcessSurroundAudio(Span<float> buffer, int outputChannels)
     {
-        UpdatePanningFactors(channels);
+        var sourceLayout = Format.Layout;
 
-        var frameCount = buffer.Length / channels;
-
-        for (var frame = 0; frame < frameCount; frame++)
+        if (sourceLayout is ChannelLayout.Mono or ChannelLayout.Stereo)
         {
-            // Assuming base audio is mono
-            // TODO: refactor when support for getting audio data is added (e.g., mono, stereo, 5.1 or 7.1, etc.)
-            var inputSample = buffer[frame * channels];
+            UpdatePanningFactors(outputChannels);
+        }
 
-            // down-mixing stereo to mono
-            if (channels >= 2)
+        var frameCount = buffer.Length / outputChannels;
+        var sourceChannels = Format.Channels;
+        
+        var tempFrame = ArrayPool<float>.Shared.Rent(outputChannels);
+        var sourceFrame = ArrayPool<float>.Shared.Rent(sourceChannels);
+
+        try
+        {
+            for (var frame = 0; frame < frameCount; frame++)
             {
-                var left = buffer[frame * channels];
-                var right = buffer[frame * channels + 1];
-                inputSample = (left + right) / 2;
-            }
+                var frameStart = frame * outputChannels;
+                var sourceFrameStart = frame * sourceChannels;
 
-            // Clear the current frame's output
-            for (var ch = 0; ch < channels; ch++)
-            {
-                buffer[frame * channels + ch] = 0f;
-            }
+                // Copy the original source frame for processing
+                buffer.Slice(sourceFrameStart, sourceChannels).CopyTo(sourceFrame);
+                
+                // Clear the temporary frame buffer for new data
+                var tempFrameSpan = tempFrame.AsSpan(0, outputChannels);
+                tempFrameSpan.Clear();
 
-            // Process each virtual speaker
-            for (var speakerIndex = 0; speakerIndex < _currentConfiguration.SpeakerPositions.Length; speakerIndex++)
-            {
-                var delayedSample = ApplyDelayAndVolume(
-                    inputSample,
-                    _currentConfiguration.Volumes[speakerIndex],
-                    _currentConfiguration.Delays[speakerIndex],
-                    speakerIndex
-                );
+                // Map source channels to output channels, performing upmixing or downmixing as needed.
+                MapChannels(sourceFrame.AsSpan(0, sourceChannels), tempFrameSpan, sourceLayout);
+                
+                // Clear the current frame's output in the main buffer before writing new data.
+                buffer.Slice(frameStart, outputChannels).Clear();
 
-                // Apply low-pass filter to LFE channel (e.g., last speaker in 5.1)
-                if (speakerIndex == _currentConfiguration.SpeakerPositions.Length - 1 &&
-                    _speakerConfig != SpeakerConfiguration.Stereo)
+                // If the source is simple (Mono/Stereo), we pan it across the virtual speaker array.
+                // For complex sources (Quad, 5.1 etc.), the upmixed/downmixed result from MapChannels is used directly.
+                if (sourceLayout is ChannelLayout.Mono or ChannelLayout.Stereo)
                 {
-                    delayedSample = ApplyLowPassFilter(delayedSample);
-                }
+                    // For stereo, we pan the downmixed mono signal. For true stereo placement, separate SoundPlayers would be used.
+                    var inputSample = (tempFrame[0] + tempFrame[1]) * 0.5f;
 
-                // Distribute the delayed sample to each output channel based on panning factors
-                for (var ch = 0; ch < channels; ch++)
+                    for (var speakerIndex = 0; speakerIndex < _currentConfiguration.SpeakerPositions.Length; speakerIndex++)
+                    {
+                        var delayedSample = ApplyDelayAndVolume(
+                            inputSample,
+                            _currentConfiguration.Volumes[speakerIndex],
+                            _currentConfiguration.Delays[speakerIndex],
+                            speakerIndex
+                        );
+                        
+                        // Apply low-pass filter to the virtual LFE speaker if it exists.
+                        if (speakerIndex == _currentConfiguration.LfeChannelIndex)
+                        {
+                            delayedSample = ApplyLowPassFilter(delayedSample);
+                        }
+                        
+                        // Distribute the delayed sample to each output channel based on panning factors.
+                        for (var ch = 0; ch < outputChannels; ch++)
+                        {
+                            buffer[frameStart + ch] += delayedSample * _panningFactors[speakerIndex][ch];
+                        }
+                    }
+                }
+                else 
                 {
-                    buffer[frame * channels + ch] += delayedSample * _panningFactors[speakerIndex][ch];
+                    // Apply LFE low-pass filter directly to the mapped multi-channel frame.
+                    if (_currentConfiguration.LfeChannelIndex >= 0 && _currentConfiguration.LfeChannelIndex < outputChannels)
+                    {
+                        var lfeIndex = _currentConfiguration.LfeChannelIndex;
+                        tempFrame[lfeIndex] = ApplyLowPassFilter(tempFrame[lfeIndex]);
+                    }
+                    
+                    // For Quad, Surround sources, copy the mapped (upmixed/downmixed) channels directly.
+                    tempFrameSpan.CopyTo(buffer.Slice(frameStart, outputChannels));
                 }
             }
+        }
+        finally
+        {
+            ArrayPool<float>.Shared.Return(tempFrame);
+            ArrayPool<float>.Shared.Return(sourceFrame);
+        }
+    }
+
+    /// <summary>
+    /// Maps input channels from a source layout to the output buffer based on the player's target speaker configuration.
+    /// Handles upmixing from mono/stereo, downmixing from surround, and direct mapping scenarios.
+    /// </summary>
+    private void MapChannels(ReadOnlySpan<float> sourceFrame, Span<float> outputFrame, ChannelLayout sourceLayout)
+    {
+        // Standard channel indices for 5.1/7.1 SMPTE/ITU layout
+        const int L = 0, R = 1, C = 2, LFE = 3, SL = 4, SR = 5, SideL = 6, SideR = 7;
+
+        switch (sourceLayout)
+        {
+            case ChannelLayout.Mono:
+                // For panning, we just need a single value since the actual placement happens in the main loop.
+                // We place it in the first channel of the temp buffer as a convention.
+                if (outputFrame.Length > 0)
+                {
+                    outputFrame[0] = sourceFrame[0];
+                }
+                break;
+
+            case ChannelLayout.Stereo:
+                // For panning, place L/R in the first two temp channels. The main loop will downmix this for panning.
+                if (outputFrame.Length >= 2)
+                {
+                    outputFrame[L] = sourceFrame[L];
+                    outputFrame[R] = sourceFrame[R];
+                }
+                else if (outputFrame.Length == 1)
+                {
+                    outputFrame[0] = (sourceFrame[L] + sourceFrame[R]) * 0.5f;
+                }
+                break;
+
+            case ChannelLayout.Surround51:
+                if (_speakerConfig == SpeakerConfiguration.Stereo && outputFrame.Length >= 2)
+                {
+                    // Downmix 5.1 to Stereo using standard coefficients
+                    outputFrame[L] = sourceFrame[L] + sourceFrame[C] * 0.707f + sourceFrame[SL] * 0.707f;
+                    outputFrame[R] = sourceFrame[R] + sourceFrame[C] * 0.707f + sourceFrame[SR] * 0.707f;
+                }
+                else if (outputFrame.Length >= 6) // Direct map or upmix to 7.1
+                {
+                    // Copy base 5.1 channels
+                    sourceFrame.Slice(0, 6).CopyTo(outputFrame);
+                    // If output is 7.1, duplicate surround rears to side channels
+                    if (outputFrame.Length >= 8)
+                    {
+                        outputFrame[SideL] = sourceFrame[SL];
+                        outputFrame[SideR] = sourceFrame[SR];
+                    }
+                }
+                break;
+
+            case ChannelLayout.Surround71:
+                if (_speakerConfig == SpeakerConfiguration.Stereo && outputFrame.Length >= 2)
+                {
+                    // Downmix 7.1 to Stereo using standard coefficients
+                    outputFrame[L] = sourceFrame[L] + sourceFrame[C] * 0.707f + sourceFrame[SL] * 0.5f + sourceFrame[SideL] * 0.866f;
+                    outputFrame[R] = sourceFrame[R] + sourceFrame[C] * 0.707f + sourceFrame[SR] * 0.5f + sourceFrame[SideR] * 0.866f;
+                }
+                else if (_speakerConfig == SpeakerConfiguration.Surround51 && outputFrame.Length >= 6)
+                {
+                    // Downmix 7.1 to 5.1 by mixing side channels into surrounds
+                    outputFrame[L] = sourceFrame[L];
+                    outputFrame[R] = sourceFrame[R];
+                    outputFrame[C] = sourceFrame[C];
+                    outputFrame[LFE] = sourceFrame[LFE];
+                    outputFrame[SL] = sourceFrame[SL] + sourceFrame[SideL] * 0.707f;
+                    outputFrame[SR] = sourceFrame[SR] + sourceFrame[SideR] * 0.707f;
+                }
+                else if (outputFrame.Length >= 8) // Direct map to 7.1
+                {
+                    sourceFrame.CopyTo(outputFrame);
+                }
+                break;
+
+            default: // Unknown or Quad, just copy what fits
+                var toCopy = Math.Min(sourceFrame.Length, outputFrame.Length);
+                sourceFrame.Slice(0, toCopy).CopyTo(outputFrame);
+                break;
         }
     }
 
@@ -467,8 +596,11 @@ public sealed class SurroundPlayer : SoundPlayerBase
         if (maxContribution > 0)
         {
             var sum = weights.Sum();
-            for (var i = 0; i < weights.Length; i++)
-                weights[i] /= sum;
+            if (sum > 0)
+            {
+                for (var i = 0; i < weights.Length; i++)
+                    weights[i] /= sum;
+            }
 
             return weights;
         }
@@ -547,13 +679,23 @@ public sealed class SurroundPlayer : SoundPlayerBase
 
     private float ApplyDelayAndVolume(float sample, float volume, float delayMs, int speakerIndex)
     {
-        var delaySamples = (int)(delayMs * Format.SampleRate / 1000f);
+        var speakerDelayLine = _delayLines[speakerIndex];
+        // If there's no delay buffer for this speaker, just apply volume and return.
+        if (speakerDelayLine.Length <= 1)
+        {
+            return sample * volume;
+        }
 
-        var delayIndex = (_delayIndices[speakerIndex] - delaySamples + _delayLines.Length) % _delayLines.Length;
-        var delayedSample = _delayLines[delayIndex];
+        var writeIndex = _delayIndices[speakerIndex];
 
-        _delayLines[_delayIndices[speakerIndex]] = sample;
-        _delayIndices[speakerIndex] = (_delayIndices[speakerIndex] + 1) % _delayLines.Length;
+        // Read the oldest sample from the current write position (before we overwrite it).
+        var delayedSample = speakerDelayLine[writeIndex];
+
+        // Write the new, incoming sample into the delay line.
+        speakerDelayLine[writeIndex] = sample;
+
+        // Advance the write pointer, wrapping it around the buffer for this specific speaker.
+        _delayIndices[speakerIndex] = (writeIndex + 1) % speakerDelayLine.Length;
 
         return delayedSample * volume;
     }
@@ -608,6 +750,12 @@ public class SurroundConfiguration(string name, float[] volumes, float[] delays,
     ///     The positions of each speaker.
     /// </summary>
     public Vector2[] SpeakerPositions { get; set; } = speakerPositions;
+    
+    /// <summary>
+    /// The index of the LFE (Low-Frequency Effects) channel in this configuration.
+    /// Set to -1 if no LFE channel exists.
+    /// </summary>
+    public int LfeChannelIndex { get; set; } = -1;
 
     /// <summary>
     /// Validate that all arrays have the same length to help ensure everything will run smoothly

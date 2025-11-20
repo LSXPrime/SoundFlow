@@ -6,6 +6,11 @@ using SoundFlow.Abstracts;
 using System.Buffers;
 using System.Reflection;
 using System.Text.Json.Nodes;
+using SoundFlow.Editing.Mapping;
+using SoundFlow.Metadata.Midi;
+using SoundFlow.Midi.Abstracts;
+using SoundFlow.Midi.Interfaces;
+using SoundFlow.Midi.Routing.Nodes;
 using SoundFlow.Structs;
 using SoundFlow.Utils;
 
@@ -16,54 +21,61 @@ namespace SoundFlow.Editing.Persistence;
 /// </summary>
 public static class CompositionProjectManager
 {
-    private const string CurrentProjectFileVersion = "1.2.0";
-    private const string ConsolidatedMediaFolderName = "Assets";
-    private const long MaxEmbedSizeBytes = 1 * 1024 * 1024; // 1MB threshold for embedding
+    // The native file version this version of the library is designed to write and read.
+    // Used for compatibility checks during loading.
+    private const string DefaultProjectFileVersion = "1.3.0";
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
-    
+
     #region Saving
 
     /// <summary>
-    /// Saves the given composition to the specified project file path.
+    /// Saves the given composition to the specified project file path using the specified options.
     /// </summary>
     /// <param name="engine">The audio engine instance of the composition.</param>
     /// <param name="composition">The composition to save.</param>
     /// <param name="projectFilePath">The full path where the project file will be saved.</param>
-    /// <param name="consolidateMedia">If true, external and in-memory/stream audio sources will be processed for consolidation.</param>
-    /// <param name="embedSmallMedia">If true, small audio sources (below a threshold) will be embedded directly into the project file.</param>
+    /// <param name="options">Configuration options for the save operation. If null, default options will be used.</param>
     public static async Task SaveProjectAsync(
         AudioEngine engine,
         Composition composition,
         string projectFilePath,
-        bool consolidateMedia = true,
-        bool embedSmallMedia = true)
+        ProjectSaveOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(composition);
         ArgumentException.ThrowIfNullOrEmpty(projectFilePath);
 
+        // If no options are provided, create a default instance to avoid null checks everywhere.
+        options ??= new ProjectSaveOptions();
+        
         var projectData = new ProjectData
         {
-            ProjectFileVersion = CurrentProjectFileVersion,
+            ProjectFileVersion = options.ProjectFileVersion,
             Name = composition.Name,
             MasterVolume = composition.MasterVolume,
             TargetSampleRate = composition.SampleRate,
             TargetChannels = composition.TargetChannels,
+            TicksPerQuarterNote = composition.TicksPerQuarterNote,
+            TempoTrack = composition.TempoTrack.Select(m => new ProjectTempoMarker
+                { Time = m.Time, BeatsPerMinute = m.BeatsPerMinute }).ToList(),
             Modifiers = SerializeEffects(composition.Modifiers),
-            Analyzers = SerializeEffects(composition.Analyzers)
+            Analyzers = SerializeEffects(composition.Analyzers),
+            MidiTargets = SerializeEffects(composition.MidiTargets.OfType<MidiTargetNode>().Select(n => n.Target)),
+            MidiMappings = SerializeMappings(composition.MappingManager.Mappings)
         };
 
         var projectDirectory = Path.GetDirectoryName(projectFilePath)
                                ?? throw new IOException("Invalid project file path.");
-        var mediaAssetsDirectory = Path.Combine(projectDirectory, ConsolidatedMediaFolderName);
+        var mediaAssetsDirectory = Path.Combine(projectDirectory, options.ConsolidatedMediaFolderName);
 
-        if (consolidateMedia) Directory.CreateDirectory(mediaAssetsDirectory);
+        if (options.ConsolidateMedia) Directory.CreateDirectory(mediaAssetsDirectory);
 
         var sourceProviderMap = new Dictionary<ISoundDataProvider, ProjectSourceReference>();
+        var midiSequenceMap = new Dictionary<MidiSequence, ProjectSourceReference>();
 
         foreach (var track in composition.Tracks)
         {
@@ -91,15 +103,12 @@ public static class CompositionProjectManager
                         engine,
                         projectDirectory,
                         mediaAssetsDirectory,
-                        consolidateMedia,
-                        embedSmallMedia,
-                        composition.SampleRate,
-                        composition.TargetChannels
-                        );
+                        options
+                    );
                     sourceProviderMap[segment.SourceDataProvider] = sourceRef;
                     if (projectData.SourceReferences.All(sr => sr.Id != sourceRef.Id))
                     {
-                         projectData.SourceReferences.Add(sourceRef);
+                        projectData.SourceReferences.Add(sourceRef);
                     }
                     else
                     {
@@ -115,7 +124,7 @@ public static class CompositionProjectManager
                     SourceStartTime = segment.SourceStartTime,
                     SourceDuration = segment.SourceDuration,
                     TimelineStartTime = segment.TimelineStartTime,
-                    Settings =  new ProjectAudioSegmentSettings
+                    Settings = new ProjectAudioSegmentSettings
                     {
                         IsEnabled = segment.Settings.IsEnabled,
                         Loop = segment.Settings.Loop,
@@ -134,7 +143,44 @@ public static class CompositionProjectManager
                     }
                 });
             }
+
             projectData.Tracks.Add(projectTrack);
+        }
+
+        foreach (var midiTrack in composition.MidiTracks)
+        {
+            var projectMidiTrack = new ProjectMidiTrack
+            {
+                Name = midiTrack.Name,
+                TargetComponentName = midiTrack.Target?.Name,
+                Settings = new ProjectTrackSettings
+                {
+                    IsEnabled = midiTrack.Settings.IsEnabled,
+                    IsMuted = midiTrack.Settings.IsMuted,
+                    IsSoloed = midiTrack.Settings.IsSoloed,
+                    MidiModifiers = SerializeEffects(midiTrack.Settings.MidiModifiers)
+                }
+            };
+
+            foreach (var segment in midiTrack.Segments)
+            {
+                if (!midiSequenceMap.TryGetValue(segment.Sequence, out var sourceRef))
+                {
+                    sourceRef = await CreateMidiSourceReferenceAsync(segment.Sequence, projectDirectory,
+                        mediaAssetsDirectory);
+                    midiSequenceMap[segment.Sequence] = sourceRef;
+                    projectData.SourceReferences.Add(sourceRef);
+                }
+
+                projectMidiTrack.Segments.Add(new ProjectMidiSegment
+                {
+                    Name = segment.Name,
+                    SourceReferenceId = sourceRef.Id,
+                    TimelineStartTime = segment.TimelineStartTime
+                });
+            }
+
+            projectData.MidiTracks.Add(projectMidiTrack);
         }
 
         var json = JsonSerializer.Serialize(projectData, SerializerOptions);
@@ -148,21 +194,27 @@ public static class CompositionProjectManager
         AudioEngine engine,
         string projectDirectory,
         string mediaAssetsDirectory,
-        bool consolidateMedia,
-        bool embedSmallMedia,
-        int compositionSampleRate,
-        int compositionTargetChannels)
+        ProjectSaveOptions options)
     {
+        var sourceFormat = new AudioFormat
+        {
+            Format = provider.SampleFormat,
+            SampleRate = provider.SampleRate,
+            Channels = provider.FormatInfo?.ChannelCount ?? 2,
+            Layout = AudioFormat.GetLayoutFromChannels(provider.FormatInfo?.ChannelCount ?? 2)
+        };
+
         var sourceRef = new ProjectSourceReference
         {
-            OriginalSampleFormat = provider.SampleFormat,
-            OriginalSampleRate = provider.SampleRate
+            OriginalSampleFormat = sourceFormat.Format,
+            OriginalSampleRate = sourceFormat.SampleRate,
+            OriginalChannelLayout = sourceFormat.Layout
         };
-        
+
         // 1. Attempt Embedding (if enabled and suitable)
         // Provider must be seekable and have a known, finite length for embedding.
-        if (embedSmallMedia && provider is { CanSeek: true, Length: > 0 } &&
-            (long)provider.Length * provider.SampleFormat.GetBytesPerSample() < MaxEmbedSizeBytes)
+        if (options.EmbedSmallMedia && provider is { CanSeek: true, Length: > 0 } &&
+            (long)provider.Length * provider.SampleFormat.GetBytesPerSample() < options.MaxEmbedSizeBytes)
         {
             var samplesToEmbed = provider.Length;
             if (samplesToEmbed > 0)
@@ -192,7 +244,7 @@ public static class CompositionProjectManager
 
         // 2. Attempt Consolidation (if enabled and not embedded)
         // Requires the provider to be fully readable (seekable, known length).
-        if (consolidateMedia && provider is { CanSeek: true, Length: > 0 })
+        if (options.ConsolidateMedia && provider is { CanSeek: true, Length: > 0 })
         {
             var consolidatedFileName = $"{sourceRef.Id:N}.wav";
             var consolidatedFilePath = Path.Combine(mediaAssetsDirectory, consolidatedFileName);
@@ -209,33 +261,32 @@ public static class CompositionProjectManager
 
                     if (samplesRead == totalSamples && totalSamples > 0)
                     {
-                        // ISoundDataProvider doesn't expose its native channel count. This is a limitation.
-                        // For now, I will use the composition's target channels for the encoded WAV.
-                        // This means mono sources might become stereo, or vice versa, if compositionTargetChannels differs.
-                        // TODO: refactor when support for getting audio data is added (e.g., mono, stereo, 5.1 or 7.1, etc.)
-                        var audioFormat = new AudioFormat
+                        // Use the source provider's own format for consolidation.
+                        var audioFormatForEncoding = new AudioFormat
                         {
                             Format = SampleFormat.F32,
-                            Channels = compositionTargetChannels,
-                            SampleRate = provider.SampleRate
+                            Channels = sourceFormat.Channels,
+                            Layout = sourceFormat.Layout,
+                            SampleRate = sourceFormat.SampleRate
                         };
-                        var stream = new FileStream(consolidatedFilePath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096);
-                        var encoder = engine.CreateEncoder(stream, EncodingFormat.Wav, audioFormat);
+
+                        var stream = new FileStream(consolidatedFilePath, FileMode.Create, FileAccess.Write,
+                            FileShare.None, bufferSize: 4096);
+                        var encoder = engine.CreateEncoder(stream, "wav", audioFormatForEncoding);
                         encoder.Encode(tempBuffer.AsSpan(0, samplesRead));
                         encoder.Dispose();
                         await stream.DisposeAsync();
-
-                        sourceRef.OriginalSampleFormat = audioFormat.Format;
-                        sourceRef.OriginalSampleRate = audioFormat.SampleRate;
                     }
                     else if (totalSamples == 0)
                     {
                         // Handle empty provider, create an empty WAV file or skip consolidation for it.
-                        await File.WriteAllBytesAsync(consolidatedFilePath, CreateEmptyWavHeader(compositionSampleRate, compositionTargetChannels, SampleFormat.F32));
+                        await File.WriteAllBytesAsync(consolidatedFilePath,
+                            CreateEmptyWavHeader(sourceFormat.SampleRate, sourceFormat.Channels, SampleFormat.F32));
                     }
                     else
                     {
-                        Console.WriteLine($"Warning: Could not read all samples from in-memory provider for consolidation (ID: {sourceRef.Id}). Expected {totalSamples}, got {samplesRead}.");
+                        Log.Warning(
+                            $"Could not read all samples from in-memory provider for consolidation (ID: {sourceRef.Id}). Expected {totalSamples}, got {samplesRead}.");
                         return sourceRef; // Return without consolidated path
                     }
                 }
@@ -244,11 +295,37 @@ public static class CompositionProjectManager
                     ArrayPool<float>.Shared.Return(tempBuffer);
                 }
             }
-            sourceRef.ConsolidatedRelativePath = Path.GetRelativePath(projectDirectory, consolidatedFilePath).Replace(Path.DirectorySeparatorChar, '/');
+
+            sourceRef.ConsolidatedRelativePath = Path.GetRelativePath(projectDirectory, consolidatedFilePath)
+                .Replace(Path.DirectorySeparatorChar, '/');
             return sourceRef;
         }
 
         // 3. If not embedded and not consolidated (or consolidation failed for in-memory), return a placeholder.
+        return sourceRef;
+    }
+
+    private static async Task<ProjectSourceReference> CreateMidiSourceReferenceAsync(MidiSequence sequence,
+        string projectDirectory, string mediaAssetsDirectory)
+    {
+        var sourceRef = new ProjectSourceReference
+        {
+            IsMidiData = true
+        };
+
+        var consolidatedFileName = $"{sourceRef.Id:N}.mid";
+        var consolidatedFilePath = Path.Combine(mediaAssetsDirectory, consolidatedFileName);
+
+        var midiFile = sequence.ToMidiFile();
+
+        await using (var fileStream =
+                     new FileStream(consolidatedFilePath, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            MidiFileWriter.Write(midiFile, fileStream);
+        }
+
+        sourceRef.ConsolidatedRelativePath = Path.GetRelativePath(projectDirectory, consolidatedFilePath)
+            .Replace(Path.DirectorySeparatorChar, '/');
         return sourceRef;
     }
 
@@ -271,7 +348,7 @@ public static class CompositionProjectManager
         // Sub-chunk 1 "fmt "
         writer.Write("fmt "u8);
         writer.Write(16);
-        writer.Write((short) (format == SampleFormat.F32 ? 3 : 1)); // AudioFormat (3 for IEEE float, 1 for PCM)
+        writer.Write((short)(format == SampleFormat.F32 ? 3 : 1)); // AudioFormat (3 for IEEE float, 1 for PCM)
         writer.Write((short)channels);
         writer.Write(sampleRate);
         writer.Write(averageBytesPerSecond);
@@ -285,7 +362,6 @@ public static class CompositionProjectManager
         return ms.ToArray();
     }
 
-
     #endregion
 
     #region Loading
@@ -297,7 +373,8 @@ public static class CompositionProjectManager
     /// <param name="format">The audio format of the composition. Cannot be null.</param>
     /// <param name="projectFilePath">The full path of the project file to load.</param>
     /// <returns>A tuple containing the loaded Composition and a list of missing/unresolved source references.</returns>
-    public static async Task<(Composition Composition, List<ProjectSourceReference> UnresolvedSources)> LoadProjectAsync(AudioEngine engine, AudioFormat format, string projectFilePath)
+    public static async Task<(Composition Composition, List<ProjectSourceReference> UnresolvedSources)>
+        LoadProjectAsync(AudioEngine engine, AudioFormat format, string projectFilePath)
     {
         if (!File.Exists(projectFilePath))
             throw new FileNotFoundException("Project file not found.", projectFilePath);
@@ -307,47 +384,74 @@ public static class CompositionProjectManager
                           ?? throw new JsonException("Failed to deserialize project data.");
 
         if (Version.TryParse(projectData.ProjectFileVersion, out var fileVersion) &&
-            Version.TryParse(CurrentProjectFileVersion, out var currentVersion) &&
+            Version.TryParse(DefaultProjectFileVersion, out var currentVersion) &&
             fileVersion.Major > currentVersion.Major)
         {
-            Console.WriteLine($"Warning: Loading project file version {projectData.ProjectFileVersion} " +
-                              $"with library version {CurrentProjectFileVersion}. Forward compatibility is not guaranteed.");
+            Log.Warning(
+                $"Loading project file version {projectData.ProjectFileVersion} with library version {DefaultProjectFileVersion}. Forward compatibility is not guaranteed.");
         }
 
-        var composition = new Composition(format, projectData.Name)
+        var composition = new Composition(engine, format, projectData.Name)
         {
             MasterVolume = projectData.MasterVolume,
             SampleRate = projectData.TargetSampleRate,
             TargetChannels = projectData.TargetChannels,
+            TicksPerQuarterNote = projectData.TicksPerQuarterNote
         };
-        composition.Modifiers.AddRange(DeserializeEffects<SoundModifier>(format, projectData.Modifiers));
-        composition.Analyzers.AddRange(DeserializeEffects<AudioAnalyzer>(format, projectData.Analyzers));
+        composition.TempoTrack.Clear();
+        composition.TempoTrack.AddRange(projectData.TempoTrack.Select(m => new TempoMarker(m.Time, m.BeatsPerMinute)));
+        composition.Modifiers.AddRange(DeserializeEffects<SoundModifier>(format, projectData.Modifiers, composition));
+        composition.Analyzers.AddRange(DeserializeEffects<AudioAnalyzer>(format, projectData.Analyzers, composition));
+        
+        var deserializedMidiControllables = DeserializeEffects<IMidiControllable>(format, projectData.MidiTargets, composition);
+        composition.MidiTargets.AddRange(deserializedMidiControllables.Select(c => new MidiTargetNode(c)));
+
 
         var projectDirectory = Path.GetDirectoryName(projectFilePath)
                                ?? throw new IOException("Invalid project file path.");
         var unresolvedSources = new List<ProjectSourceReference>();
 
         var resolvedProviderCache = new Dictionary<Guid, ISoundDataProvider>();
+        var resolvedMidiSequenceCache = new Dictionary<Guid, MidiSequence>();
 
         foreach (var sourceRef in projectData.SourceReferences)
         {
-            if (!resolvedProviderCache.TryGetValue(sourceRef.Id, out var value))
+            if (sourceRef.IsMidiData)
             {
-                sourceRef.ResolvedDataProvider = ResolveSourceReferenceAsync(engine, format, sourceRef, projectDirectory);
-                if (sourceRef.ResolvedDataProvider != null)
+                if (!resolvedMidiSequenceCache.ContainsKey(sourceRef.Id))
                 {
-                    resolvedProviderCache[sourceRef.Id] = sourceRef.ResolvedDataProvider;
-                }
-                else
-                {
-                    sourceRef.IsMissing = true;
-                    unresolvedSources.Add(sourceRef);
+                    var sequence = ResolveMidiSourceReference(sourceRef, projectDirectory);
+                    if (sequence != null)
+                    {
+                        resolvedMidiSequenceCache[sourceRef.Id] = sequence;
+                    }
+                    else
+                    {
+                        sourceRef.IsMissing = true;
+                        unresolvedSources.Add(sourceRef);
+                    }
                 }
             }
             else
             {
-                sourceRef.ResolvedDataProvider = value;
-                sourceRef.IsMissing = false;
+                if (!resolvedProviderCache.TryGetValue(sourceRef.Id, out var value))
+                {
+                    sourceRef.ResolvedDataProvider = ResolveSourceReference(engine, sourceRef, projectDirectory);
+                    if (sourceRef.ResolvedDataProvider != null)
+                    {
+                        resolvedProviderCache[sourceRef.Id] = sourceRef.ResolvedDataProvider;
+                    }
+                    else
+                    {
+                        sourceRef.IsMissing = true;
+                        unresolvedSources.Add(sourceRef);
+                    }
+                }
+                else
+                {
+                    sourceRef.ResolvedDataProvider = value;
+                    sourceRef.IsMissing = false;
+                }
             }
         }
 
@@ -361,8 +465,10 @@ public static class CompositionProjectManager
                 Volume = projectTrack.Settings.Volume,
                 Pan = projectTrack.Settings.Pan,
             };
-            trackSettings.Modifiers.AddRange(DeserializeEffects<SoundModifier>(format, projectTrack.Settings.Modifiers));
-            trackSettings.Analyzers.AddRange(DeserializeEffects<AudioAnalyzer>(format, projectTrack.Settings.Analyzers));
+            trackSettings.Modifiers.AddRange(
+                DeserializeEffects<SoundModifier>(format, projectTrack.Settings.Modifiers, composition));
+            trackSettings.Analyzers.AddRange(
+                DeserializeEffects<AudioAnalyzer>(format, projectTrack.Settings.Analyzers, composition));
 
             var track = new Track(projectTrack.Name, trackSettings)
             {
@@ -371,17 +477,20 @@ public static class CompositionProjectManager
 
             foreach (var projectSegment in projectTrack.Segments)
             {
-                var sourceRef = projectData.SourceReferences.FirstOrDefault(sr => sr.Id == projectSegment.SourceReferenceId);
+                var sourceRef =
+                    projectData.SourceReferences.FirstOrDefault(sr => sr.Id == projectSegment.SourceReferenceId);
                 var providerToUse = sourceRef?.ResolvedDataProvider;
 
                 if (providerToUse == null)
                 {
-                    Console.WriteLine($"Warning: Audio source for segment '{projectSegment.Name}' (Ref ID: {projectSegment.SourceReferenceId}) is missing. Using placeholder.");
+                    Log.Warning(
+                        $"Audio source for segment '{projectSegment.Name}' (Ref ID: {projectSegment.SourceReferenceId}) is missing. Using placeholder.");
                     var silentDuration = projectSegment.SourceDuration;
-                    var placeholderSampleCount = (int)(Math.Max(silentDuration.TotalSeconds, 0.1) * composition.SampleRate * composition.TargetChannels);
+                    var placeholderSampleCount = (int)(Math.Max(silentDuration.TotalSeconds, 0.1) *
+                                                       composition.SampleRate * composition.TargetChannels);
                     providerToUse = new RawDataProvider(new float[placeholderSampleCount]);
                 }
-                
+
                 var segmentSettings = new AudioSegmentSettings
                 {
                     IsEnabled = projectSegment.Settings.IsEnabled,
@@ -395,8 +504,10 @@ public static class CompositionProjectManager
                     FadeInCurve = projectSegment.Settings.FadeInCurve,
                     FadeOutCurve = projectSegment.Settings.FadeOutCurve,
                 };
-                segmentSettings.Modifiers.AddRange(DeserializeEffects<SoundModifier>(format, projectSegment.Settings.Modifiers));
-                segmentSettings.Analyzers.AddRange(DeserializeEffects<AudioAnalyzer>(format, projectSegment.Settings.Analyzers));
+                segmentSettings.Modifiers.AddRange(
+                    DeserializeEffects<SoundModifier>(format, projectSegment.Settings.Modifiers, composition));
+                segmentSettings.Analyzers.AddRange(
+                    DeserializeEffects<AudioAnalyzer>(format, projectSegment.Settings.Analyzers, composition));
 
                 var segment = new AudioSegment(
                     format,
@@ -411,7 +522,6 @@ public static class CompositionProjectManager
                 {
                     ParentTrack = track
                 };
-                // ParentSegment is set implicitly by AudioSegment constructor, so we can set stretch properties here.
                 if (projectSegment.Settings.TargetStretchDuration.HasValue)
                     segment.Settings.TargetStretchDuration = projectSegment.Settings.TargetStretchDuration;
                 else
@@ -419,14 +529,77 @@ public static class CompositionProjectManager
 
                 track.AddSegment(segment);
             }
-            composition.AddTrack(track);
+
+            composition.Editor.AddTrack(track);
         }
+
+        foreach (var projectMidiTrack in projectData.MidiTracks)
+        {
+            var trackSettings = new TrackSettings
+            {
+                IsEnabled = projectMidiTrack.Settings.IsEnabled,
+                IsMuted = projectMidiTrack.Settings.IsMuted,
+                IsSoloed = projectMidiTrack.Settings.IsSoloed
+            };
+            trackSettings.MidiModifiers.AddRange(DeserializeEffects<MidiModifier>(default,
+                projectMidiTrack.Settings.MidiModifiers, composition));
+
+            var midiTrack = new MidiTrack(projectMidiTrack.Name, settings: trackSettings)
+            {
+                ParentComposition = composition
+            };
+
+            foreach (var projectSegment in projectMidiTrack.Segments)
+            {
+                if (resolvedMidiSequenceCache.TryGetValue(projectSegment.SourceReferenceId, out var sequence))
+                {
+                    var segment = new MidiSegment(sequence, projectSegment.TimelineStartTime, projectSegment.Name);
+                    midiTrack.AddSegment(segment);
+                }
+                else
+                {
+                    Log.Warning(
+                        $"MIDI source for segment '{projectSegment.Name}' (Ref ID: {projectSegment.SourceReferenceId}) is missing. Segment skipped.");
+                }
+            }
+
+            composition.Editor.AddMidiTrack(midiTrack);
+        }
+
+        // Post-load step: Link MIDI track targets
+        foreach (var projectMidiTrack in projectData.MidiTracks)
+        {
+            if (string.IsNullOrEmpty(projectMidiTrack.TargetComponentName)) continue;
+
+            var midiTrack = composition.MidiTracks.FirstOrDefault(t => t.Name == projectMidiTrack.Name);
+            if (midiTrack == null) continue;
+
+            // Try to find the target in the internal list first.
+            var targetNode = composition.MidiTargets.FirstOrDefault(t => t.Name == projectMidiTrack.TargetComponentName);
+
+            // If not found, it might be a physical output device.
+            if (targetNode == null)
+            {
+                var outputDevice = engine.MidiOutputDevices.FirstOrDefault(d => d.Name == projectMidiTrack.TargetComponentName);
+                if (outputDevice.Name != null)
+                {
+                    // This is complex. The MidiManager owns device nodes. We need a way to request one.
+                    // For now, this part of linking is a known limitation if not an internal target.
+                    Log.Warning($"Could not find MIDI output device '{projectMidiTrack.TargetComponentName}' to link to track '{midiTrack.Name}'.");
+                }
+            }
+            midiTrack.Target = targetNode;
+        }
+
+        // Post-load step: Recreate MIDI Mappings
+        DeserializeMappings(projectData.MidiMappings, composition);
 
         composition.ClearDirtyFlag();
         return (composition, unresolvedSources);
     }
 
-    private static ISoundDataProvider? ResolveSourceReferenceAsync(AudioEngine engine, AudioFormat format, ProjectSourceReference sourceRef, string projectDirectory)
+    private static ISoundDataProvider? ResolveSourceReference(AudioEngine engine, ProjectSourceReference sourceRef,
+        string projectDirectory)
     {
         // 1. Try Embedded
         if (sourceRef.IsEmbedded && !string.IsNullOrEmpty(sourceRef.EmbeddedDataB64))
@@ -441,15 +614,34 @@ public static class CompositionProjectManager
                     Buffer.BlockCopy(byteBuffer, 0, floatArray, 0, byteBuffer.Length);
                     return new RawDataProvider(floatArray);
                 }
-                Console.WriteLine($"Warning: Unsupported embedded format {sourceRef.OriginalSampleFormat} for source ID {sourceRef.Id}");
+
+                Log.Warning(
+                    $"Unsupported embedded format {sourceRef.OriginalSampleFormat} for source ID {sourceRef.Id}");
                 return null;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error decoding embedded data for source ID {sourceRef.Id}: {ex.Message}");
+                Log.Error($"[CompositionProjectManager] Error decoding embedded data for source ID {sourceRef.Id}: {ex.Message}");
                 return null;
             }
         }
+
+        // For file-based sources, we need to create an AudioFormat based on the saved metadata.
+        var format = new AudioFormat
+        {
+            Format = sourceRef.OriginalSampleFormat,
+            SampleRate = sourceRef.OriginalSampleRate ?? 48000, // Fallback, though it should exist
+            Layout = sourceRef.OriginalChannelLayout,
+            Channels = sourceRef.OriginalChannelLayout switch
+            {
+                ChannelLayout.Mono => 1,
+                ChannelLayout.Stereo => 2,
+                ChannelLayout.Quad => 4,
+                ChannelLayout.Surround51 => 6,
+                ChannelLayout.Surround71 => 8,
+                _ => 2
+            }
+        };
 
         string? pathToTry;
 
@@ -458,23 +650,49 @@ public static class CompositionProjectManager
         {
             pathToTry = Path.GetFullPath(Path.Combine(projectDirectory, sourceRef.ConsolidatedRelativePath));
             if (File.Exists(pathToTry))
-                return new StreamDataProvider(engine, format, new FileStream(pathToTry, FileMode.Open, FileAccess.Read, FileShare.Read));
-            
-            Console.WriteLine($"Warning: Consolidated file not found for source ID {sourceRef.Id} at expected path: {pathToTry}");
+                return new StreamDataProvider(engine, format,
+                    new FileStream(pathToTry, FileMode.Open, FileAccess.Read, FileShare.Read));
+
+            Log.Warning($"Consolidated file not found for source ID {sourceRef.Id} at expected path: {pathToTry}");
         }
 
         // 3. Try Original Absolute Path
         if (!string.IsNullOrEmpty(sourceRef.OriginalAbsolutePath))
         {
             pathToTry = sourceRef.OriginalAbsolutePath;
-             if (File.Exists(pathToTry))
-                 return new StreamDataProvider(engine, format, new FileStream(pathToTry, FileMode.Open, FileAccess.Read, FileShare.Read));
-             
-             Console.WriteLine($"Warning: Original absolute file not found for source ID {sourceRef.Id} at path: {pathToTry}");
+            if (File.Exists(pathToTry))
+                return new StreamDataProvider(engine, format,
+                    new FileStream(pathToTry, FileMode.Open, FileAccess.Read, FileShare.Read));
+
+            Log.Warning($"Original absolute file not found for source ID {sourceRef.Id} at path: {pathToTry}");
         }
 
         // If all attempts fail
         return null;
+    }
+
+    private static MidiSequence? ResolveMidiSourceReference(ProjectSourceReference sourceRef, string projectDirectory)
+    {
+        if (string.IsNullOrEmpty(sourceRef.ConsolidatedRelativePath)) return null;
+
+        var filePath = Path.GetFullPath(Path.Combine(projectDirectory, sourceRef.ConsolidatedRelativePath));
+        if (!File.Exists(filePath))
+        {
+            Log.Warning($"Consolidated MIDI file not found for source ID {sourceRef.Id} at expected path: {filePath}");
+            return null;
+        }
+
+        try
+        {
+            using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var midiFile = MidiFileParser.Parse(stream);
+            return new MidiSequence(midiFile);
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"[CompositionProjectManager] Error loading MIDI data for source ID {sourceRef.Id}: {ex.Message}");
+            return null;
+        }
     }
 
     /// <summary>
@@ -483,7 +701,6 @@ public static class CompositionProjectManager
     /// The caller is responsible for updating any AudioSegments in the composition that use this source reference.
     /// </summary>
     /// <param name="engine">The audio engine instance for context.</param>
-    /// <param name="format">The audio format of the composition.</param>
     /// <param name="missingSourceReference">The ProjectSourceReference that is currently marked as missing.</param>
     /// <param name="newFilePath">The new absolute file path to the audio source.</param>
     /// <param name="projectDirectory">The base directory of the current project (used for resolving paths).</param>
@@ -491,9 +708,8 @@ public static class CompositionProjectManager
     /// True if relinking was successful and a new ISoundDataProvider was resolved for the reference;
     /// otherwise, false. The updated ISoundDataProvider is set on missingSourceReference.ResolvedDataProvider.
     /// </returns>
-    public static bool RelinkMissingMediaAsync(
+    public static bool RelinkMissingMedia(
         AudioEngine engine,
-        AudioFormat format,
         ProjectSourceReference missingSourceReference,
         string newFilePath,
         string projectDirectory)
@@ -504,65 +720,70 @@ public static class CompositionProjectManager
 
         if (!File.Exists(newFilePath))
         {
-            Console.WriteLine($"Relink failed: File not found at '{newFilePath}'.");
+            Log.Warning($"Relink failed: File not found at '{newFilePath}'.");
             return false;
         }
 
         // Update the source reference with the new path information
         missingSourceReference.OriginalAbsolutePath = newFilePath;
-        missingSourceReference.ConsolidatedRelativePath = null; // It's no longer pointing to a consolidated version (if it was)
+        missingSourceReference.ConsolidatedRelativePath =
+            null; // It's no longer pointing to a consolidated version (if it was)
         missingSourceReference.IsEmbedded = false;
         missingSourceReference.EmbeddedDataB64 = null;
         missingSourceReference.IsMissing = true;
 
         // Try to resolve the new path into a data provider
-        var newProvider = ResolveSourceReferenceAsync(engine, format, missingSourceReference, projectDirectory);
+        var newProvider = ResolveSourceReference(engine, missingSourceReference, projectDirectory);
 
         if (newProvider != null)
         {
             missingSourceReference.ResolvedDataProvider = newProvider;
             missingSourceReference.IsMissing = false;
-            Console.WriteLine($"Successfully relinked source ID {missingSourceReference.Id} to '{newFilePath}'.");
+            Log.Info($"Successfully relinked source ID {missingSourceReference.Id} to '{newFilePath}'.");
             return true;
         }
 
-        Console.WriteLine($"Relink failed: Could not resolve data provider for '{newFilePath}'.");
+        Log.Warning($"Relink failed: Could not resolve data provider for '{newFilePath}'.");
         return false;
     }
 
-
     #endregion
-    
+
     // Helper method to serialize modifiers/analyzers
-    private static List<ProjectEffectData> SerializeEffects<T>(IEnumerable<T> effects) where T : class
+    private static List<ProjectEffectData> SerializeEffects<T>(IEnumerable<T?> effects) where T : class
     {
         var effectDataList = new List<ProjectEffectData>();
         foreach (var effect in effects)
         {
+            if (effect is null) continue;
             var effectType = effect.GetType();
             var parameters = new JsonObject();
-            
-            // Serialize public, settable properties
+
             foreach (var prop in effectType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
                 if (prop is not { CanRead: true, CanWrite: true } || prop.GetIndexParameters().Length != 0) continue;
-                if (prop.DeclaringType == typeof(SoundComponent) || 
+                if (prop.DeclaringType == typeof(SoundComponent) ||
                     prop.DeclaringType == typeof(SoundModifier) ||
+                    prop.DeclaringType == typeof(MidiModifier) ||
                     (prop.DeclaringType == typeof(AudioAnalyzer) && prop.Name is "Name" or "Enabled" or "Engine"))
                 {
                     continue; // Skip base class properties that are handled separately or shouldn't be serialized
                 }
+
                 if (prop.Name is "ParentSegment" or "ParentTrack" or "ParentComposition") continue;
 
 
                 try
                 {
                     var value = prop.GetValue(effect);
-                    if (value != null) parameters[prop.Name] = JsonValue.Create(JsonSerializer.SerializeToElement(value, SerializerOptions));
+                    if (value != null)
+                        parameters[prop.Name] =
+                            JsonValue.Create(JsonSerializer.SerializeToElement(value, SerializerOptions));
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Warning: Could not serialize property '{prop.Name}' for effect type '{effectType.Name}': {ex.Message}");
+                    Log.Warning(
+                        $"[CompositionProjectManager] Could not serialize property '{prop.Name}' for effect type '{effectType.Name}': {ex.Message}");
                 }
             }
 
@@ -573,60 +794,74 @@ public static class CompositionProjectManager
                 {
                     SoundModifier sm => sm.Enabled,
                     AudioAnalyzer aa => aa.Enabled,
+                    MidiModifier mm => mm.IsEnabled,
                     _ => false
                 },
                 Parameters = JsonDocument.Parse(parameters.ToJsonString(SerializerOptions))
             });
         }
+
         return effectDataList;
     }
 
 
     // Helper method to deserialize modifiers/analyzers
-    private static List<T> DeserializeEffects<T>(AudioFormat format, List<ProjectEffectData> effectDataList) where T : class
+    private static List<T> DeserializeEffects<T>(AudioFormat format, List<ProjectEffectData> effectDataList,
+        Composition composition) where T : class
     {
         var targetEffectList = new List<T>();
         foreach (var effectData in effectDataList)
         {
             if (string.IsNullOrEmpty(effectData.TypeName))
             {
-                Console.WriteLine("Warning: Effect data found with no TypeName. Skipping.");
+                Log.Warning("Effect data found with no TypeName. Skipping.");
                 continue;
             }
 
             var effectType = Type.GetType(effectData.TypeName);
             if (effectType == null)
             {
-                Console.WriteLine($"Warning: Could not find effect type '{effectData.TypeName}'. Effect will be skipped.");
+                Log.Warning($"Could not find effect type '{effectData.TypeName}'. Effect will be skipped.");
                 continue;
             }
-            
+
             if (!typeof(T).IsAssignableFrom(effectType))
             {
-                Console.WriteLine($"Warning: Type '{effectData.TypeName}' is not assignable to target type '{typeof(T).Name}'. Skipping.");
+                Log.Warning(
+                    $"Type '{effectData.TypeName}' is not assignable to target type '{typeof(T).Name}'. Skipping.");
                 continue;
             }
 
             try
             {
-                // Attempt to create instance, passing device if constructor requires it.
-                var constructor = effectType.GetConstructor([typeof(AudioFormat)]);
-                var effectInstance = constructor != null ? Activator.CreateInstance(effectType, format) : Activator.CreateInstance(effectType);
+                // Attempt to create instance, passing AudioFormat if constructor requires it.
+                var constructorWithFormat = effectType.GetConstructor([typeof(AudioFormat)]);
+                var effectInstance = constructorWithFormat != null
+                    ? Activator.CreateInstance(effectType, format)
+                    : Activator.CreateInstance(effectType);
 
                 if (effectInstance is not T typedInstance)
                 {
-                    Console.WriteLine($"Warning: Could not create instance of effect type '{effectData.TypeName}'. Skipping.");
+                    Log.Warning($"Could not create instance of effect type '{effectData.TypeName}'. Skipping.");
                     continue;
+                }
+
+                if (typedInstance is IMidiMappable mappable)
+                {
+                    composition.RegisterMappableObject(mappable);
                 }
 
                 switch (typedInstance)
                 {
-                    // Set IsEnabled for SoundModifiers
+                    // Set IsEnabled for known types
                     case SoundModifier sm:
                         sm.Enabled = effectData.IsEnabled;
                         break;
                     case AudioAnalyzer aa:
                         aa.Enabled = effectData.IsEnabled;
+                        break;
+                    case MidiModifier mm:
+                        mm.IsEnabled = effectData.IsEnabled;
                         break;
                 }
 
@@ -641,24 +876,102 @@ public static class CompositionProjectManager
                         {
                             try
                             {
-                                var value = JsonSerializer.Deserialize(jsonProp.GetRawText(), propInfo.PropertyType, SerializerOptions);
+                                var value = JsonSerializer.Deserialize(jsonProp.GetRawText(), propInfo.PropertyType,
+                                    SerializerOptions);
                                 propInfo.SetValue(typedInstance, value);
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine($"Warning: Could not deserialize or set property '{propInfo.Name}' for effect '{effectType.Name}': {ex.Message}. Using default.");
+                                Log.Warning(
+                                    $"[CompositionProjectManager] Could not deserialize or set property '{propInfo.Name}' for effect '{effectType.Name}': {ex.Message}. Using default.");
                             }
                         }
                     }
                 }
+
                 targetEffectList.Add(typedInstance);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error instantiating or setting parameters for effect '{effectData.TypeName}': {ex.Message}. Effect skipped.");
+                Log.Error(
+                    $"[CompositionProjectManager] Error instantiating or setting parameters for effect '{effectData.TypeName}': {ex.Message}. Effect skipped.");
             }
         }
-        
+
         return targetEffectList;
+    }
+
+    private static List<ProjectMidiMapping> SerializeMappings(IReadOnlyList<MidiMapping> mappings)
+    {
+        return mappings.Select(m => new ProjectMidiMapping
+        {
+            DeviceName = m.Source.DeviceName,
+            Channel = m.Source.Channel,
+            MessageType = m.Source.MessageType,
+            MessageParameter = m.Source.MessageParameter,
+            TargetObjectId = m.Target.TargetObjectId,
+            TargetType = m.Target.TargetType,
+            TargetMemberName = m.Target.TargetMemberName,
+            Behavior = m.Behavior,
+            Transformer = new ValueTransformer
+            {
+                SourceMin = m.Transformer.SourceMin,
+                SourceMax = m.Transformer.SourceMax,
+                TargetMin = m.Transformer.TargetMin,
+                TargetMax = m.Transformer.TargetMax,
+                CurveType = m.Transformer.CurveType
+            }
+        }).ToList();
+    }
+
+    private static void DeserializeMappings(List<ProjectMidiMapping> projectMappings, Composition composition)
+    {
+        foreach (var pm in projectMappings)
+        {
+            var mapping = new MidiMapping(
+                new MidiInputSource
+                {
+                    DeviceName = pm.DeviceName,
+                    Channel = pm.Channel,
+                    MessageType = pm.MessageType,
+                    MessageParameter = pm.MessageParameter
+                },
+                new MidiMappingTarget
+                {
+                    TargetObjectId = pm.TargetObjectId,
+                    TargetType = pm.TargetType,
+                    TargetMemberName = pm.TargetMemberName
+                },
+                new ValueTransformer
+                {
+                    SourceMin = pm.Transformer.SourceMin,
+                    SourceMax = pm.Transformer.SourceMax,
+                    TargetMin = pm.Transformer.TargetMin,
+                    TargetMax = pm.Transformer.TargetMax,
+                    CurveType = pm.Transformer.CurveType
+                },
+                pm.Behavior
+            );
+
+            // Validate the mapping upon loading
+            if (composition.TryGetMappableObject(pm.TargetObjectId, out var targetObject) && targetObject != null)
+            {
+                var memberInfo = targetObject.GetType()
+                    .GetMember(pm.TargetMemberName, BindingFlags.Public | BindingFlags.Instance).FirstOrDefault();
+                if (memberInfo == null)
+                {
+                    mapping.IsResolved = false; // Member not found
+                    Log.Warning(
+                        $"Could not resolve member '{pm.TargetMemberName}' for target object ID '{pm.TargetObjectId}'. Mapping is broken.");
+                }
+            }
+            else
+            {
+                mapping.IsResolved = false; // Object not found
+                Log.Warning($"Could not find target object with ID '{pm.TargetObjectId}'. Mapping is broken.");
+            }
+
+            composition.MappingManager.AddMapping(mapping);
+        }
     }
 }

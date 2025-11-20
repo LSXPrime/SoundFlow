@@ -307,7 +307,7 @@ public class BiquadFilter
                 _a2 = 1 - alpha;
                 break;
             default:
-                throw new NotImplementedException("Filter type not implemented");
+                throw new NotSupportedException("Filter type not supported or implemented");
         }
 
         // Normalize the coefficients

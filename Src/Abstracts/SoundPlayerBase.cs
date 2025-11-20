@@ -10,8 +10,9 @@ namespace SoundFlow.Abstracts;
 /// </summary>
 public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
 {
+    private protected int RawSamplePosition;
+
     private readonly ISoundDataProvider _dataProvider;
-    private int _rawSamplePosition;
     private float _currentFractionalFrame;
     private float[] _resampleBuffer;
     private int _resampleBufferValidSamples;
@@ -40,7 +41,10 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
     }
 
     /// <inheritdoc />
-    public PlaybackState State { get; private set; }
+    public PlaybackState State { get; internal set; }
+
+    /// <inheritdoc />
+    public ISoundDataProvider DataProvider => _dataProvider;
 
     /// <inheritdoc />
     public bool IsLooping { get; set; }
@@ -49,7 +53,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
     public float Time =>
         _dataProvider.Length == 0 || Format.Channels == 0 || Format.SampleRate == 0
             ? 0
-            : (float)_rawSamplePosition / Format.Channels / Format.SampleRate;
+            : (float)RawSamplePosition / Format.Channels / Format.SampleRate;
 
     /// <inheritdoc />
     public float Duration =>
@@ -107,7 +111,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
         if (IsLooping && _loopEndSamples != -1)
         {
             // Ensure loop is valid and we've reached or passed the end point.
-            if (_loopStartSamples < _loopEndSamples && _rawSamplePosition >= _loopEndSamples)
+            if (_loopStartSamples < _loopEndSamples && RawSamplePosition >= _loopEndSamples)
                 Seek(_loopStartSamples, channels);
         }
 
@@ -129,7 +133,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
                     break; // Exit the read loop
                 }
 
-                _rawSamplePosition += samplesReadThisCall;
+                RawSamplePosition += samplesReadThisCall;
                 outputSlice = outputSlice.Slice(samplesReadThisCall);
             }
             return;
@@ -158,8 +162,8 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
                 // If still not enough data after filling and the provider is truly exhausted and can't provide more data, end of stream.
                 if (_resampleBufferValidSamples < samplesRequiredInBufferForInterpolation)
                 {
-                    _rawSamplePosition += totalSourceSamplesAdvancedThisCall;
-                    _rawSamplePosition = Math.Min(_rawSamplePosition, _dataProvider.Length);
+                    RawSamplePosition += totalSourceSamplesAdvancedThisCall;
+                    RawSamplePosition = Math.Min(RawSamplePosition, _dataProvider.Length);
                     HandleEndOfStream(output[outputBufferOffset..], channels);
                     return;
                 }
@@ -208,8 +212,8 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
         }
 
         // Update raw sample position based on actual source samples advanced.
-        _rawSamplePosition += totalSourceSamplesAdvancedThisCall;
-        _rawSamplePosition = Math.Min(_rawSamplePosition, _dataProvider.Length);
+        RawSamplePosition += totalSourceSamplesAdvancedThisCall;
+        RawSamplePosition = Math.Min(RawSamplePosition, _dataProvider.Length);
     }
 
     /// <summary>
@@ -379,8 +383,8 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
                 if (currentlyValidInResample < spaceToFill)
                 {
                     var sourceSamplesFromFinalFill = FillResampleBuffer(Math.Max(currentlyValidInResample, spaceToFill), channels);
-                    _rawSamplePosition += sourceSamplesFromFinalFill;
-                    _rawSamplePosition = Math.Min(_rawSamplePosition, _dataProvider.Length);
+                    RawSamplePosition += sourceSamplesFromFinalFill;
+                    RawSamplePosition = Math.Min(RawSamplePosition, _dataProvider.Length);
                 }
 
                 var toCopy = Math.Min(spaceToFill, _resampleBufferValidSamples);
@@ -544,7 +548,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
         sampleOffset = (sampleOffset / channels) * channels;
         sampleOffset = Math.Clamp(sampleOffset, 0, maxSeekableSample);
         _dataProvider.Seek(sampleOffset);
-        _rawSamplePosition = sampleOffset;
+        RawSamplePosition = sampleOffset;
         _currentFractionalFrame = 0f;
         _resampleBufferValidSamples = 0;
         _timeStretcher.Reset();

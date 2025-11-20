@@ -1,0 +1,443 @@
+name: Build FFmpeg Codec Integration
+
+on:
+  workflow_dispatch:
+
+# Cancel in-progress runs on new commits to the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Windows builds
+  build-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            os: windows-latest
+            msystem: MINGW64
+            mingw-package-prefix: mingw-w64-x86_64
+          - arch: x86
+            os: windows-latest
+            msystem: MINGW32
+            mingw-package-prefix: mingw-w64-i686
+          - arch: arm64
+            os: windows-11-arm
+            msystem: CLANGARM64
+            mingw-package-prefix: mingw-w64-clang-aarch64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: msys2 {0}
+        working-directory: Native/ffmpeg-codec
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            ${{ matrix.mingw-package-prefix }}-gcc
+            ${{ matrix.mingw-package-prefix }}-cmake
+            ${{ matrix.mingw-package-prefix }}-ninja
+            ${{ matrix.mingw-package-prefix }}-make
+            ${{ matrix.mingw-package-prefix }}-pkg-config
+            base-devel
+            git
+            nasm
+            yasm
+      - name: Configure and Build
+        run: |
+          mkdir build
+          cd build
+          cmake .. -G "MinGW Makefiles" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.arch }}
+          cmake --build . --parallel --verbose
+      - name: Analyze Dependencies
+        shell: msys2 {0}
+        run: |
+          ARTIFACT_DIR="build/runtimes/win-${{ matrix.arch }}/native"
+          echo "--- Analyzing artifacts in $ARTIFACT_DIR ---"
+          for lib in $ARTIFACT_DIR/*.dll; do
+            if [ -f "$lib" ]; then
+              echo "=========================================="
+              echo "Analyzing: $(basename "$lib")"
+              echo "=========================================="
+              echo "=== File Info ==="
+              file "$lib"
+              echo -e "\n=== Dependencies (Imported DLLs) ==="
+              objdump -p "$lib" | grep "DLL Name:" || echo "No DLL dependencies found."
+              echo -e "\n=== Exports (Exported Functions) ==="
+              nm -g "$lib" | grep " T " || echo "No exported functions found."
+            fi
+          done
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: soundflow-ffmpeg-win-${{ matrix.arch }}
+          path: Native/ffmpeg-codec/build/runtimes/win-${{ matrix.arch }}/native/*.dll
+  
+  # Linux builds
+  build-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            cmake_opts: -DCMAKE_SYSTEM_PROCESSOR=x86_64
+            toolchain_pkgs: ""
+          - arch: arm64
+            cmake_opts: >-
+              -DCMAKE_SYSTEM_NAME=Linux
+              -DCMAKE_SYSTEM_PROCESSOR=aarch64
+              -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc
+              -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++
+            toolchain_pkgs: gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          - arch: arm
+            cmake_opts: >-
+              -DCMAKE_SYSTEM_NAME=Linux
+              -DCMAKE_SYSTEM_PROCESSOR=arm
+              -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc
+              -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++
+            toolchain_pkgs: gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: Native/ffmpeg-codec
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake nasm yasm pkg-config ${{ matrix.toolchain_pkgs }}
+      - name: Configure and Build
+        run: |
+          mkdir build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_opts }}
+          cmake --build . --parallel --verbose
+      - name: Analyze Dependencies
+        run: |
+          NM_CMD="nm"
+          if [[ "${{ matrix.arch }}" == "arm64" ]]; then
+            NM_CMD="aarch64-linux-gnu-nm"
+          elif [[ "${{ matrix.arch }}" == "arm" ]]; then
+            NM_CMD="arm-linux-gnueabihf-nm"
+          fi
+          ARTIFACT_DIR="build/runtimes/linux-${{ matrix.arch }}/native"
+          echo "--- Analyzing artifacts in $ARTIFACT_DIR ---"
+          for lib in $ARTIFACT_DIR/*.so; do
+            if [ -f "$lib" ]; then
+              echo "=========================================="
+              echo "Analyzing: $(basename "$lib")"
+              echo "=========================================="
+              echo "=== File Info ==="
+              file "$lib"
+              echo -e "\n=== Dependencies ==="
+              # Use readelf for cross-compiled binaries as ldd won't work
+              if [[ "${{ matrix.arch }}" == "x64" ]]; then
+                ldd "$lib" || readelf -d "$lib" | grep "NEEDED" || echo "No dependencies found."
+              else
+                readelf -d "$lib" | grep "NEEDED" || echo "No dependencies found."
+              fi
+              echo -e "\n=== Exports (Exported Functions) ==="
+              $NM_CMD -gD "$lib" | grep " T " || echo "No exported functions found."
+            fi
+          done
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: soundflow-ffmpeg-linux-${{ matrix.arch }}
+          path: Native/ffmpeg-codec/build/runtimes/linux-${{ matrix.arch }}/native/*
+
+  # macOS builds
+  build-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            os: macos-13
+            cmake_arch: x86_64
+          - arch: arm64
+            os: macos-14
+            cmake_arch: arm64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: Native/ffmpeg-codec
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew bundle --file=- <<EOF
+          brew "cmake"
+          brew "nasm"
+          brew "yasm"
+          brew "pkg-config"
+          EOF
+      - name: Configure and Build
+        run: |
+          mkdir build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake_arch }} \
+            -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cmake_arch }}
+          cmake --build . --parallel --verbose
+      - name: Analyze Dependencies
+        run: |
+          ARTIFACT_DIR="build/runtimes/osx-${{ matrix.arch }}/native"
+          echo "--- Analyzing artifacts in $ARTIFACT_DIR ---"
+          for lib in $ARTIFACT_DIR/*.dylib; do
+            if [ -f "$lib" ]; then
+              echo "=========================================="
+              echo "Analyzing: $(basename "$lib")"
+              echo "=========================================="
+              echo "=== File Info ==="
+              file "$lib"
+              lipo -info "$lib"
+              echo -e "\n=== Dependencies ==="
+              otool -L "$lib"
+              echo -e "\n=== Exports (Exported Functions) ==="
+              nm -g "$lib" | grep " T " || echo "No exported functions found."
+            fi
+          done
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: soundflow-ffmpeg-osx-${{ matrix.arch }}
+          path: Native/ffmpeg-codec/build/runtimes/osx-${{ matrix.arch }}/native/*
+
+  # Android builds
+  build-android:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid_arch: x64
+            abi: x86_64
+          - rid_arch: arm
+            abi: armeabi-v7a
+          - rid_arch: arm64
+            abi: arm64-v8a
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: Native/ffmpeg-codec
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26b
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake nasm yasm pkg-config
+      - name: Configure and Build
+        env:
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          mkdir build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=${{ matrix.abi }} \
+            -DANDROID_PLATFORM=21
+          cmake --build . --parallel --verbose
+      - name: Analyze Dependencies
+        env:
+          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          TOOLCHAIN_BIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          NM_CMD="$TOOLCHAIN_BIN/llvm-nm"
+          READELF_CMD="$TOOLCHAIN_BIN/llvm-readelf"
+          ARTIFACT_DIR="build/runtimes/android-${{ matrix.rid_arch }}/native"
+          echo "--- Analyzing artifacts in $ARTIFACT_DIR ---"
+          for lib in $ARTIFACT_DIR/*.so; do
+            if [ -f "$lib" ]; then
+              echo "=========================================="
+              echo "Analyzing: $(basename "$lib")"
+              echo "=========================================="
+              echo "=== File Info ==="
+              file "$lib"
+              echo -e "\n=== Dependencies ==="
+              $READELF_CMD -d "$lib" | grep "NEEDED" || echo "No dependencies found."
+              echo -e "\n=== Exports (Exported Functions) ==="
+              $NM_CMD -gD "$lib" | grep " T " || echo "No exported functions found."
+            fi
+          done
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: soundflow-ffmpeg-android-${{ matrix.rid_arch }}
+          path: Native/ffmpeg-codec/build/runtimes/android-${{ matrix.rid_arch }}/native/*
+
+  # FreeBSD build
+  build-freebsd:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            vm_arch: x86_64
+          - arch: arm64
+            vm_arch: arm64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build in FreeBSD VM
+        uses: cross-platform-actions/action@v0.26.0
+        with:
+          operating_system: freebsd
+          version: '14.0'
+          architecture: ${{ matrix.vm_arch }}
+          run: |
+            cd Native/ffmpeg-codec
+            # Install dependencies
+            sudo pkg install -y cmake gmake nasm yasm pkgconf bash
+            # Create and enter build directory
+            mkdir build
+            cd build
+            # Configure and build
+            cmake .. \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_MAKE_PROGRAM=gmake
+            cmake --build . --parallel --verbose
+            
+            # Go back to project root
+            cd ..
+            # Analyze Dependencies
+            ARTIFACT_DIR="build/runtimes/freebsd-${{ matrix.arch }}/native"
+            echo "--- Analyzing artifacts in $ARTIFACT_DIR ---"
+            for lib in $ARTIFACT_DIR/*.so; do
+              if [ -f "$lib" ]; then
+                echo "=========================================="
+                echo "Analyzing: $(basename "$lib")"
+                echo "=========================================="
+                echo "=== File Info ==="
+                file "$lib"
+                echo -e "\n=== Dependencies ==="
+                ldd "$lib" || echo "ldd failed or no dependencies found."
+                echo -e "\n=== Exports (Exported Functions) ==="
+                nm -gD "$lib" | grep " T " || echo "No exported functions found."
+              fi
+            done
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: soundflow-ffmpeg-freebsd-${{ matrix.arch }}
+          path: Native/ffmpeg-codec/build/runtimes/freebsd-${{ matrix.arch }}/native/*
+
+  # iOS build
+  build-ios:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: Native/ffmpeg-codec
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew bundle --file=- <<EOF
+          brew "cmake"
+          brew "nasm"
+          brew "yasm"
+          brew "pkg-config"
+          EOF
+      - name: Configure and Build
+        run: |
+          mkdir build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+          cmake --build . --parallel --verbose
+      - name: Analyze Dependencies
+        run: |
+          ARTIFACT_DIR="build/runtimes/ios-arm64/native"
+          echo "--- Analyzing artifacts in $ARTIFACT_DIR ---"
+          for lib in $ARTIFACT_DIR/*.dylib; do
+            if [ -f "$lib" ]; then
+              echo "=========================================="
+              echo "Analyzing: $(basename "$lib")"
+              echo "=========================================="
+              echo "=== File Info ==="
+              file "$lib"
+              lipo -info "$lib"
+              echo -e "\n=== Dependencies ==="
+              otool -L "$lib"
+              echo -e "\n=== Exports (Exported Functions) ==="
+              nm -g "$lib" | grep " T " || echo "No exported functions found."
+            fi
+          done
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: soundflow-ffmpeg-ios-arm64
+          path: Native/ffmpeg-codec/build/runtimes/ios-arm64/native/*
+
+  package-artifacts:
+    name: Package all artifacts
+    runs-on: ubuntu-22.04
+    needs:
+      - build-windows
+      - build-linux
+      - build-macos
+      - build-android
+      - build-freebsd
+      - build-ios
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Reorganize artifacts into a single runtimes folder
+        run: |
+          mkdir runtimes
+          for dir in artifacts/*; do
+            # Extract the RID (e.g., "win-x64") from the artifact directory name.
+            local_dir_name=$(basename "$dir")
+            rid="${local_dir_name#soundflow-ffmpeg-}"
+            echo "Processing artifact for RID: $rid"
+            # Create the target directory structure
+            target_dir="runtimes/$rid/native"
+            mkdir -p "$target_dir"
+            # Move the files
+            if [ -n "$(ls -A $dir)" ]; then
+              mv "$dir"/* "$target_dir/"
+            else
+              echo "Warning: Artifact directory '$local_dir_name' is empty."
+            fi
+          done
+      - name: Verify final runtimes structure
+        run: |
+          echo "Final structure of the 'runtimes' directory:"
+          ls -R runtimes
+      - name: Create zip archive
+        run: zip -r soundflow-ffmpeg-runtimes.zip runtimes
+
+      - name: Upload final archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: soundflow-ffmpeg-runtimes
+          path: soundflow-ffmpeg-runtimes.zip

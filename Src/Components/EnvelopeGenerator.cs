@@ -71,6 +71,11 @@ public class EnvelopeGenerator : SoundComponent
     public EnvelopeGenerator(AudioEngine engine, AudioFormat format) : base(engine, format) { }
 
     /// <summary>
+    /// Gets the current stage of the envelope.
+    /// </summary>
+    public EnvelopeState State => _currentState;
+    
+    /// <summary>
     /// Gets or sets the attack time in seconds.
     /// This is the time it takes for the envelope to rise from 0 to 1.
     /// </summary>
@@ -129,20 +134,20 @@ public class EnvelopeGenerator : SoundComponent
     /// </summary>
     public void TriggerOn()
     {
-        if (!Retrigger && _currentState != EnvelopeState.Idle) return;
+        if (!Retrigger && _currentState != EnvelopeState.Idle && _currentState != EnvelopeState.Release) return;
         _currentState = EnvelopeState.Attack;
-        _currentLevel = 0f;
+        // In retrigger mode, we start from the current level for a smoother transition.
+        if (!Retrigger) _currentLevel = 0f;
         CalculateRates();
     }
 
     /// <summary>
     /// Triggers the envelope to start the release stage.
     /// This method is typically called when a note is released or a gate signal is deactivated.
-    /// It only has an effect if the <see cref="Trigger"/> mode is set to <see cref="TriggerMode.Gate"/> and the envelope is not already idle.
     /// </summary>
     public void TriggerOff()
     {
-        if (_currentState == EnvelopeState.Idle || Trigger != TriggerMode.Gate) return;
+        if (_currentState is EnvelopeState.Idle or EnvelopeState.Release) return;
         _currentState = EnvelopeState.Release;
         CalculateRates();
     }
@@ -153,14 +158,9 @@ public class EnvelopeGenerator : SoundComponent
     /// </summary>
     private void CalculateRates()
     {
-        // Calculate rates per sample for each stage
-        _attackRate = AttackTime > 0 ? 1f / (AttackTime * Format.SampleRate) : float.MaxValue;
-        _decayRate = DecayTime > 0
-            ? (1f - SustainLevel) / (DecayTime * Format.SampleRate)
-            : float.MaxValue;
-        _releaseRate = ReleaseTime > 0
-            ? _currentLevel / (ReleaseTime * Format.SampleRate)
-            : float.MaxValue;
+        _attackRate = AttackTime > 0.0f ? 1.0f / (AttackTime * Format.SampleRate) : float.MaxValue;
+        _decayRate = DecayTime > 0.0f ? (1.0f - SustainLevel) / (DecayTime * Format.SampleRate) : float.MaxValue;
+        _releaseRate = ReleaseTime > 0.0f ? _currentLevel / (ReleaseTime * Format.SampleRate) : float.MaxValue;
     }
 
     /// <inheritdoc/>
@@ -168,14 +168,25 @@ public class EnvelopeGenerator : SoundComponent
     {
         for (var i = 0; i < buffer.Length; i++)
         {
-            Update();
-            LevelChanged?.Invoke(_currentLevel);
+            buffer[i] = ProcessSample();
         }
     }
 
     /// <summary>
+    /// Processes and returns a single sample of the envelope's output.
+    /// This is more efficient for per-sample modulation than filling a buffer.
+    /// </summary>
+    /// <returns>The current envelope level for a single sample.</returns>
+    public float ProcessSample()
+    {
+        Update();
+        LevelChanged?.Invoke(_currentLevel);
+        return _currentLevel;
+    }
+
+    /// <summary>
     /// Updates the envelope level based on the current state and calculated rates.
-    /// This method is called per sample in the <see cref="GenerateAudio"/> method to advance the envelope through its stages.
+    /// This method is called per sample to advance the envelope through its stages.
     /// </summary>
     private void Update()
     {
@@ -183,13 +194,12 @@ public class EnvelopeGenerator : SoundComponent
         {
             case EnvelopeState.Attack:
                 _currentLevel += _attackRate;
-                if (_currentLevel >= 1f)
+                if (_currentLevel >= 1.0f)
                 {
-                    _currentLevel = 1f;
-                    _currentState = Trigger == TriggerMode.NoteOn ? EnvelopeState.Sustain : EnvelopeState.Decay;
+                    _currentLevel = 1.0f;
+                    _currentState = EnvelopeState.Decay;
                     CalculateRates();
                 }
-
                 break;
 
             case EnvelopeState.Decay:
@@ -197,33 +207,28 @@ public class EnvelopeGenerator : SoundComponent
                 if (_currentLevel <= SustainLevel)
                 {
                     _currentLevel = SustainLevel;
-                    _currentState = EnvelopeState.Sustain;
+                    _currentState = (Trigger == TriggerMode.Trigger) ? EnvelopeState.Release : EnvelopeState.Sustain;
+                    if (_currentState == EnvelopeState.Release) CalculateRates(); // Recalculate release rate
                 }
-
                 break;
 
             case EnvelopeState.Sustain:
-                if (Trigger == TriggerMode.Trigger)
-                {
-                    _currentState = EnvelopeState.Release;
-                    CalculateRates();
-                }
-
-                // Hold at sustain level
+                // Hold at sustain level until TriggerOff is called.
                 break;
 
             case EnvelopeState.Release:
                 _currentLevel -= _releaseRate;
-                if (_currentLevel <= 0f)
+                if (_currentLevel <= 0.0f)
                 {
-                    _currentLevel = 0f;
+                    _currentLevel = 0.0f;
                     _currentState = EnvelopeState.Idle;
                 }
-
                 break;
 
             case EnvelopeState.Idle:
-                // Remain idle
+            default:
+                // Remain idle at 0.
+                _currentLevel = 0.0f;
                 break;
         }
     }

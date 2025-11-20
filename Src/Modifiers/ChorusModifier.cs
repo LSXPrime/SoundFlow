@@ -1,4 +1,8 @@
 ﻿using SoundFlow.Abstracts;
+using SoundFlow.Enums;
+using SoundFlow.Interfaces;
+using SoundFlow.Midi.Enums;
+using SoundFlow.Midi.Structs;
 using SoundFlow.Structs;
 
 namespace SoundFlow.Modifiers;
@@ -11,21 +15,25 @@ public sealed class ChorusModifier : SoundModifier
     /// <summary>
     /// The depth of the chorus effect in milliseconds.
     /// </summary>
+    [ControllableParameter("Depth", 0.1, 8.0)]
     public float DepthMs { get; set; }
 
     /// <summary>
     /// The rate of the LFO modulation in Hz.
     /// </summary>
+    [ControllableParameter("Rate", 0.05, 5.0)]
     public float RateHz { get; set; }
 
     /// <summary>
     /// The feedback amount (0.0 - 1.0).
     /// </summary>
+    [ControllableParameter("Feedback", 0.0, 0.95)]
     public float Feedback { get; }
 
     /// <summary>
     /// The wet/dry mix (0.0 - 1.0).
     /// </summary>
+    [ControllableParameter("Mix", 0.0, 1.0)]
     public float WetDryMix { get; set; }
 
     private readonly List<float[]> _delayLines;
@@ -59,6 +67,30 @@ public sealed class ChorusModifier : SoundModifier
         for (int i = 0; i < _format.Channels; i++)
         {
             _delayLines.Add(new float[_maxDelaySamples]);
+        }
+    }
+
+    /// <inheritdoc />
+    public override void ProcessMidiMessage(MidiMessage message)
+    {
+        if (message.Command != MidiCommand.ControlChange) return;
+
+        switch (message.ControllerNumber)
+        {
+            // Standard CC for Vibrato/Chorus Rate
+            case 76:
+                RateHz = (message.ControllerValue / 127.0f) * 5.0f; // Map 0-127 to 0-5 Hz
+                break;
+            
+            // Standard CC for Vibrato/Chorus Depth
+            case 77:
+                DepthMs = (message.ControllerValue / 127.0f) * 8.0f; // Map 0-127 to 0-8 ms
+                break;
+
+            // Standard CC for Effects 1 Depth (often used for Reverb/Chorus mix)
+            case 91:
+                WetDryMix = message.ControllerValue / 127.0f; // Map 0-127 to 0.0-1.0
+                break;
         }
     }
 

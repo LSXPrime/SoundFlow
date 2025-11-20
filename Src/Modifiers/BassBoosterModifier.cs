@@ -1,4 +1,8 @@
 ﻿using SoundFlow.Abstracts;
+using SoundFlow.Enums;
+using SoundFlow.Interfaces;
+using SoundFlow.Midi.Enums;
+using SoundFlow.Midi.Structs;
 using SoundFlow.Structs;
 
 namespace SoundFlow.Modifiers;
@@ -8,15 +12,28 @@ namespace SoundFlow.Modifiers;
 /// </summary>
 public class BassBoosterModifier : SoundModifier
 {
+    private float _cutoff;
+    private float _boostGain; // Linear gain
+
     /// <summary>
     /// Gets or sets the cutoff frequency in Hertz.
     /// </summary>
-    public float Cutoff { get; set; }
+    [ControllableParameter("Cutoff", 20.0, 1000.0, MappingScale.Logarithmic)]
+    public float Cutoff
+    {
+        get => _cutoff;
+        set => _cutoff = Math.Max(20, value);
+    }
 
     /// <summary>
     /// Gets or sets the boost gain in decibels.
     /// </summary>
-    public float BoostGain { get; set; }
+    [ControllableParameter("Boost", 0.0, 24.0)]
+    public float BoostGainDb
+    {
+        get => 20 * MathF.Log10(_boostGain);
+        set => _boostGain = MathF.Pow(10, value / 20f);
+    }
 
     private readonly float[] _lpState;
     private readonly float[] _resonanceState;
@@ -27,14 +44,34 @@ public class BassBoosterModifier : SoundModifier
     /// </summary>
     /// <param name="format">The audio format to process.</param>
     /// <param name="cutoff">The cutoff frequency in Hertz.</param>
-    /// <param name="boostGain">The boost gain in decibels.</param>
-    public BassBoosterModifier(AudioFormat format, float cutoff = 150f, float boostGain = 6f)
+    /// <param name="boostGainDb">The boost gain in decibels.</param>
+    public BassBoosterModifier(AudioFormat format, float cutoff = 150f, float boostGainDb = 6f)
     {
         _format = format;
-        Cutoff = Math.Max(20, cutoff); // Minimum 20Hz
-        BoostGain = MathF.Pow(10, boostGain / 20f); // Convert dB to linear
+        _cutoff = Math.Max(20, cutoff); // Minimum 20Hz
+        _boostGain = MathF.Pow(10, boostGainDb / 20f); // Convert dB to linear
         _lpState = new float[format.Channels];
         _resonanceState = new float[format.Channels];
+    }
+
+    /// <inheritdoc />
+    public override void ProcessMidiMessage(MidiMessage message)
+    {
+        if (message.Command != MidiCommand.ControlChange) return;
+        
+        var value = message.ControllerValue / 127.0f;
+
+        switch (message.ControllerNumber)
+        {
+            case 14: // General Purpose Controller 1 for Bass Cutoff
+                var minLog = MathF.Log(20.0f);
+                var maxLog = MathF.Log(1000.0f);
+                Cutoff = MathF.Exp(minLog + (maxLog - minLog) * value);
+                break;
+            case 15: // General Purpose Controller 2 for Bass Boost
+                BoostGainDb = value * 24.0f; // Map 0-127 to 0-24 dB
+                break;
+        }
     }
 
     /// <inheritdoc />
@@ -42,14 +79,14 @@ public class BassBoosterModifier : SoundModifier
     {
         // 1-pole low-pass with resonance
         var dt = _format.InverseSampleRate;
-        var rc = 1f / (2 * MathF.PI * Cutoff);
+        var rc = 1f / (2 * MathF.PI * _cutoff);
         var alpha = dt / (rc + dt);
 
         // Low-pass filter
         _lpState[channel] += alpha * (sample - _lpState[channel]);
 
         // Add resonance feedback
-        var feedbackFactor = 0.5f * BoostGain;
+        var feedbackFactor = 0.5f * _boostGain;
         feedbackFactor = Math.Min(0.95f, feedbackFactor); // Clamp to a max value less than 1
         _resonanceState[channel] = _lpState[channel] + _resonanceState[channel] * feedbackFactor;
         

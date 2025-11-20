@@ -99,7 +99,7 @@ internal static class Program
     /// </summary>
     private static DeviceInfo? SelectDevice(DeviceType type)
     {
-        Engine.UpdateDevicesInfo();
+        Engine.UpdateAudioDevicesInfo();
         var devices = type == DeviceType.Playback ? Engine.PlaybackDevices : Engine.CaptureDevices;
 
         if (devices.Length == 0)
@@ -277,7 +277,7 @@ internal static class Program
             }
         };
         timer.Start();
-
+        
         while (player.State is PlaybackState.Playing or PlaybackState.Paused)
         {
             var keyInfo = Console.ReadKey(true);

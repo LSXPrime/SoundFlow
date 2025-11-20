@@ -1,4 +1,5 @@
 using SoundFlow.Enums;
+using SoundFlow.Metadata.Models;
 
 namespace SoundFlow.Interfaces;
 
@@ -14,7 +15,7 @@ public interface ISoundDataProvider : IDisposable
 
     /// <summary>
     ///     Gets the total length of the audio data in samples.
-    ///     May be 0 if the length is unknown (e.g., for streaming audio).
+    ///     May be 0 or -1 if the length is unknown (e.g., for streaming audio).
     /// </summary>
     int Length { get; }
 
@@ -37,6 +38,12 @@ public interface ISoundDataProvider : IDisposable
     ///     Gets a value indicating whether the data source has been disposed.
     /// </summary>
     bool IsDisposed { get; }
+    
+    /// <summary>
+    /// Gets the detailed format and tag information read from the source file.
+    /// This will be null if the provider is not sourced from a file with metadata (e.g., raw data, microphone).
+    /// </summary>
+    SoundFormatInfo? FormatInfo { get; }
 
     /// <summary>
     ///     Reads the specified number of audio bytes into the given buffer asynchronously.

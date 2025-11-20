@@ -1,5 +1,6 @@
 using SoundFlow.Components;
 using SoundFlow.Structs;
+using SoundFlow.Structs.Events;
 
 namespace SoundFlow.Abstracts.Devices;
 
@@ -13,6 +14,11 @@ public abstract class AudioPlaybackDevice : AudioDevice
     /// must be routed to this mixer.
     /// </summary>
     public Mixer MasterMixer { get; }
+    
+    /// <summary>
+    /// Cached event args object to prevent GC allocations every frame.
+    /// </summary>
+    internal readonly AudioFramesRenderedEventArgs CachedRenderEventArgs;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AudioPlaybackDevice"/> class.
@@ -23,5 +29,6 @@ public abstract class AudioPlaybackDevice : AudioDevice
     protected AudioPlaybackDevice(AudioEngine engine, AudioFormat format, DeviceConfig config) : base(engine, format, config)
     {
         MasterMixer = new Mixer(engine, Format, isMasterMixer: true) { ParentDevice = this };
+        CachedRenderEventArgs = new AudioFramesRenderedEventArgs(this, 0);
     }
 }

@@ -9,7 +9,7 @@
 
 </div>
 
-[![Stand With Palestine](https://raw.githubusercontent.com/TheBSD/StandWithPalestine/main/banner-no-action.svg)](https://thebsd.github.io/StandWithPalestine)
+[![Stand With Palestine](https://raw.githubusercontent.com/Safouene1/support-palestine-banner/master/banner-support.svg)](https://thebsd.github.io/StandWithPalestine)
 <div align="center">
   <p><strong>This project stands in solidarity with the people of Palestine and condemns the ongoing violence and ethnic cleansing by Israel. We believe developers have a responsibility to be aware of such injustices. Read our full statement on the catastrophic situation in Palestine and the surrounding region.</strong></p>
   <a href="#an-ethical-stance"><kbd>Read Our Full Ethical Stance</kbd></a>
@@ -29,105 +29,61 @@ SoundFlow is a robust and versatile .NET audio engine designed for seamless cros
 *   **Modular Component Architecture:** Build custom audio pipelines by connecting sources, modifiers, mixers, and analyzers.
 *   **Plug & Play Integrations:** Extend SoundFlow's capabilities with official integration packages, such as the WebRTC Audio Processing Module for advanced noise suppression, echo cancellation, and automatic gain control.
 *   **Extensibility:** Easily add custom audio components, effects, and visualizers to tailor the engine to your specific needs.
+*   **Pluggable Codec System:** Extend format support dynamically via `ICodecFactory`. Includes built-in support for WAV, MP3, and FLAC (via MiniAudio), with extensive format support available via extensions.
+*   **Robust Metadata Handling:** Read and write metadata tags (ID3v1, ID3v2, Vorbis Comments, MP4 Atoms) and embedded Cue Sheets for a wide range of formats (MP3, FLAC, OGG, M4A, WAV, AIFF).
 *   **High Performance:** Optimized for real-time audio processing with SIMD support and efficient memory management.
 *   **Playback:** Play audio from various sources, including files, streams, and in-memory assets.
 *   **Recording:** Capture audio input and save it to different encoding formats.
 *   **Mixing:** Combine multiple audio streams with precise control over volume and panning.
 *   **Effects:** Apply a wide range of audio effects, including reverb, chorus, delay, equalization, and more.
-*   **Analysis:** Extract valuable information from audio data, such as RMS level, peak level, frequency spectrum, and voice activity.
-*   **Visualization:** Create engaging visual representations of audio waveforms, spectrums, and level meters.
+*   **Visualization & Analysis:** Create engaging visual representations with FFT-based spectrum analysis, voice activity detection, and level metering.
 *   **Surround Sound:** Supports advanced surround sound configurations with customizable speaker positions, delays, and panning methods.
 *   **HLS Streaming Support:** Integrate internet radio and online audio via HTTP Live Streaming.
 *   **Backend Agnostic:** Supports the `MiniAudio` backend out of the box, with the ability to add others.
-*   **Non-Destructive Audio Editing & Persistence:**
-    *   **Compositions & Tracks:** Organize audio projects into multi-track compositions, allowing flexible arrangement and mixing.
-    *   **Audio Segments:** Place and manipulate audio clips on a timeline with granular control over their playback, including volume, pan, fades (Linear, Logarithmic, S-Curve), reversal, and advanced looping (repetitions or target duration).
-    *   **Pitch-Preserved Time Stretching:** Modify the duration of audio segments without altering their pitch, ideal for adapting content to specific timeframes.
-    *   **Project Save/Load:** Persist entire audio compositions to disk, including media consolidation and embedding options, with support for relinking missing audio sources.
-    *   **Timeline Manipulation:** Programmatically insert, remove, replace, or silence audio sections on a track, with automatic shifting of subsequent content.
+*   **Synthesis Engine:**
+    *   **Polyphonic Synthesizer:** A robust synthesis engine supporting unison, filtering, and modulation envelopes.
+    *   **SoundFont Support:** Native loading and playback of SoundFont 2 (.sf2) banks.
+    *   **MPE Support:** Full support for MIDI Polyphonic Expression for per-note control of pitch, timbre, and pressure.
+*   **MIDI Ecosystem:**
+    *   **Cross-Platform I/O:** Send and receive MIDI messages from hardware devices via the PortMidi backend.
+    *   **Routing & Effects:** Graph-based MIDI routing with a suite of modifiers including Arpeggiators, Harmonizers, Randomizers, and Velocity curves.
+    *   **Parameter Mapping:** Real-time MIDI mapping system allows controlling any engine parameter (Volume, Filter Cutoff, etc.) via external hardware controllers.
+*   **Non-Destructive Audio & MIDI Editing:**
+    *   **Compositions & Tracks:** Organize projects into multi-track compositions supporting both Audio and MIDI tracks.
+    *   **Hybrid Timeline:** Mix audio clips and MIDI segments on the same timeline.
+    *   **Sequencing:** Sample-accurate MIDI sequencing with quantization, swing, and tempo map support.
+    *   **Project Persistence:** Save/Load full projects including audio assets, MIDI sequences, tempo maps, and routing configurations.
 
 ## Getting Started
 
-### Installation
-
-**NuGet Package Manager:**
-
-```bash
-Install-Package SoundFlow
-```
-
-**.NET CLI:**
+To begin using SoundFlow, the easiest way is to install the NuGet package:
 
 ```bash
 dotnet add package SoundFlow
 ```
 
-### Basic Usage Example
+For a minimal working example of how to set up an audio device and play a simple sound, please refer to the starter guide on the official documentation homepage: **[SoundFlow Minimal Example](https://lsxprime.github.io/soundflow-docs/#/docs/latest/getting-started)**.
 
-This example demonstrates how to initialize a device and play an audio file using SoundFlow.
-
-```csharp
-using SoundFlow.Abstracts;
-using SoundFlow.Backends.MiniAudio;
-using SoundFlow.Components;
-using SoundFlow.Providers;
-using SoundFlow.Structs;
-
-// 1. Initialize the Audio Engine context.
-// This acts as a manager for all audio devices.
-using var engine = new MiniAudioEngine();
-
-// 2. Define the desired audio format.
-var format = AudioFormat.Dvd; // 48kHz, 16-bit Stereo
-
-// 3. Initialize a specific playback device. Passing `null` will use the system default too.
-var defaultDevice = engine.PlaybackDevices.FirstOrDefault(x => x.IsDefault);
-using var playbackDevice = engine.InitializePlaybackDevice(defaultDevice, format);
-
-// 4. Create a SoundPlayer to play an audio file.
-var player = new SoundPlayer(engine, device.Format,
-    new StreamDataProvider(engine, format, File.OpenRead("path/to/your/audiofile.wav")));
-
-// 5. Add the player to the device's MasterMixer.
-// Each device has its own independent mixer.
-device.MasterMixer.AddComponent(player);
-
-// 6. Start the device to begin audio processing.
-device.Start();
-player.Play();
-
-// Keep the console application running.
-Console.WriteLine("Playing audio... Press any key to stop.");
-Console.ReadKey();
-
-// Stop and clean up.
-player.Stop();
-device.Stop();
-```
-
-## Core Concepts
-
-SoundFlow is built upon a few key concepts:
-
-*   **Audio Engine (`AudioEngine`):** The central context that manages the audio backend and acts as a factory for audio devices. It does not control audio directly but provides the foundation for creating and managing devices.
-*   **Audio Devices (`AudioPlaybackDevice`, `AudioCaptureDevice`):** The core of the runtime. These objects represent an initialized piece of hardware (like a sound card or microphone). Each playback device has its own independent `MasterMixer` and audio graph, allowing for multiple, separate audio streams.
-*   **Full Duplex Device (`FullDuplexDevice`):** A high-level helper that pairs a playback and capture device, simplifying tasks that require simultaneous input and output, such as live effects monitoring.
-*   **Sound Components (`SoundComponent`):** Modular units that process or generate audio, forming a directed graph through input and output connections.
-*   **Mixer (`Mixer`):** Combines multiple audio streams into a single output. Each `AudioPlaybackDevice` has its own `MasterMixer` which serves as the root of its audio graph.
-*   **Sound Modifiers (`SoundModifier`):** Apply audio effects like reverb, chorus, delay, and equalization.
-*   **Audio Playback & Recording:** Components for playing and capturing audio, including surround sound support.
-*   **Audio Providers:** Standardized way to read audio data from various sources (files, streams, memory).
-*   **Audio Analysis & Visualization:** Tools for extracting information from audio and creating visual representations.
-*   **Composition (`Composition`):** The top-level project file that defines a multi-track audio timeline, applies master effects, and manages persistence.
-*   **Tracks (`Track`):** Containers within a `Composition` that hold `AudioSegment`s. Tracks have their own settings for volume, pan, mute, solo, and can host effects/analyzers.
-*   **Audio Segments (`AudioSegment`):** Individual audio clips placed on a `Track`'s timeline. Segments reference a portion of an `ISoundDataProvider` and can apply segment-specific settings like fades, looping, reversal, speed, and pitch-preserved time stretching.
-*   **Time Stretchers (`WsolaTimeStretcher`):** An advanced internal component used by `AudioSegment` and `SoundPlayerBase` to perform high-quality, pitch-preserved time manipulation.
-
-**For detailed information on these concepts, please refer to the [SoundFlow Documentation](https://lsxprime.github.io/soundflow-docs/).**
+You can also find a wide variety of practical applications, complex audio graphs, and feature usage examples in the [Samples](https://github.com/LSXPrime/SoundFlow/tree/master/Samples) folder of the repository.
 
 ## Extensions
 
-SoundFlow's architecture supports adding specialized audio processing capabilities via dedicated NuGet packages. These extensions integrate external libraries, making their features available within the SoundFlow ecosystem, often as `SoundModifier`s or utility components.
+SoundFlow's architecture supports adding specialized audio processing capabilities via dedicated NuGet packages. These extensions integrate external libraries, making their features available within the SoundFlow ecosystem.
+
+### SoundFlow.Codecs.FFMpeg
+
+This package integrates the massive **FFmpeg** library into SoundFlow. While the core engine handles common formats, this extension unlocks decoding and encoding for virtually any audio format in existence.
+
+*   **Decoders/Encoders:** Adds support for MP3, AAC, OGG Vorbis, Opus, ALAC, AC3, PCM variations, and many more.
+*   **Container Support:** Handles complex containers like M4A, MKA, and others.
+*   **Automatic Registration:** simply registering the factory enables the engine to auto-detect and play these formats transparently.
+
+### SoundFlow.Midi.PortMidi
+
+This package provides the backend implementation for MIDI hardware I/O using **PortMidi**.
+
+*   **Hardware Access:** Enumerates and connects to physical MIDI keyboards, synthesizers, and controllers on Windows, macOS, and Linux.
+*   **Synchronization:** Provides high-precision clock synchronization, allowing SoundFlow to act as a MIDI Clock Master or Slave.
 
 ### SoundFlow.Extensions.WebRtc.Apm
 
@@ -141,10 +97,6 @@ Features included in this extension:
 *   **High Pass Filter (HPF):** Removes low-frequency components (like DC offset or rumble).
 *   **Pre-Amplifier:** Applies a fixed gain before other processing.
 
-These features are primarily exposed through a single `WebRtcApmModifier` component, which is designed for real-time audio graph processing. A separate `NoiseSuppressor` component is also available for offline/batch processing of audio data from an `ISoundDataProvider`.
-
-**Learn more and find usage examples in the [SoundFlow.Extensions.WebRtc.Apm README](LINK_TO_WEBRTC_APM_README).**
-
 **Note:** The WebRTC APM native library has specific requirements, notably supporting only certain sample rates (8000, 16000, 32000, or 48000 Hz). Ensure your audio devices are initialized with one of these rates when using this extension.
 
 ## API Reference
@@ -156,8 +108,9 @@ Comprehensive API documentation will be available on the **[SoundFlow Documentat
 The **[Documentation](https://lsxprime.github.io/soundflow-docs/)** provides a wide range of tutorials and examples to help you get started:
 
 *   **Playback:** Playing audio files and streams, controlling playback.
-*   **Recording:** Recording audio, using voice activity detection.
-*   **Effects:** Applying various audio effects.
+*   **Synthesis:** Loading SoundFonts, creating synthesizers, and handling MIDI events.
+*   **Recording:** Recording audio and MIDI, using voice activity detection.
+*   **Effects:** Applying various audio effects and MIDI modifiers (Arpeggiator, Harmonizer).
 *   **Analysis:** Getting RMS level, analyzing frequency spectrum.
 *   **Visualization:** Creating level meters, waveform displays, and spectrum analyzers.
 *   **Composition:** Managing audio projects, including creating, editing, and saving multi-track compositions.
@@ -166,28 +119,18 @@ The **[Documentation](https://lsxprime.github.io/soundflow-docs/)** provides a w
 
 ## Contributing
 
-We welcome contributions to SoundFlow! If you'd like to contribute, please follow these guidelines:
+We deeply appreciate your interest in improving SoundFlow.
 
-1.  **Report Issues:** If you find a bug or have a feature request, please open an issue on the GitHub repository.
-2.  **Ask Questions and Seek Help:** If you have questions about using SoundFlow or need help with a specific issue, please open a discussion on the GitHub repository to keep the issues section clean and focused.
-3.  **Submit Pull Requests:**
-    *   Fork the repository.
-    *   Create a new branch for your changes.
-    *   Make your changes, following the project's coding style and conventions.
-    *   Make sure your changes is well tested.
-    *   Submit a pull request to the `master` branch.
-4.  **Coding Style:**
-    *   Follow the .NET coding conventions.
-    *   Use clear and descriptive variable and method names.
-    *   Write concise and well-documented code.
-    *   Use XML documentation comments for public members.
+For detailed guidelines on how to report bugs, suggest features, and submit pull requests, please consult the **[CONTRIBUTING.md](CONTRIBUTING.md)** file for more information.
 
 ## Acknowledgments
 
 We sincerely appreciate the foundational work provided by the following projects and modules:
 
 *   **[miniaudio](https://github.com/mackron/miniaudio)** - Provides a lightweight and efficient audio I/O backend.
-*   **[WebRTC Audio Processing Module (APM)](https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing)** - Offers advanced audio processing (AEC, AGC, Noise Suppression, etc) based on WebRTC's module, thanks to PulseAudio efforts.
+*   **[FFmpeg](https://ffmpeg.org/)** - The leading multimedia framework, powering our codec extension.
+*   **[PortMidi](https://github.com/PortMidi/portmidi)** - Enables cross-platform MIDI I/O.
+*   **[WebRTC Audio Processing Module (APM)](https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing)** - Offers advanced audio processing (AEC, AGC, Noise Suppression).
 
 ## Support This Project
 
@@ -230,7 +173,7 @@ This is not a conflict between equal sides; it's a systematic assault by an occu
 *   **Massacres of Civilians:** Over 61,200 Palestinians are dead, including tens of thousands of women and children. Israel indiscriminately bombs densely populated areas, targeting civilian shelters as well as hospitals like the Al-Shifa Hospital, which provided crucial healthcare to over a million people in Gaza, obliterating their lifeline and leaving them with no access to essential medical care.
 *   **Starvation as Warfare:** Israel's relentless siege blocks vital supplies of food, water, medicine, fuel, and even building materials for repairs, pushing the population towards starvation. Children are dying before aid can reach them. The UN has condemned this as a collective punishment that violates international humanitarian law.
 *   **Forced Displacement & Land Confiscation:** Nearly 90% of Gaza’s 2.1 million inhabitants have been displaced multiple times, trapped in overcrowded camps with no end in sight to the siege and relentless bombings. This systematic displacement aims to erase Palestinian identity from the land they rightfully call home, forcing them onto crowded, contaminated, and dangerous territory while Israel continues to confiscate land for its own settlements.
-*   **Destruction of Infrastructure:** Israel systematically targets essential infrastructure - hospitals, schools, power stations, water treatment plants – crippling Gaza's ability to function and leaving people without basic necessities like clean water and electricity.
+*   **Destruction of Infrastructure:** Israel systematically targets essential infrastructure - hospitals, schools, power stations, water treatment plants – crippling Gaza's ability to function and leaving people without necessities like clean water and electricity.
 
 **Syria:**
 

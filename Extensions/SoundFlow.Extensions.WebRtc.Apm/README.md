@@ -211,7 +211,7 @@ ISoundDataProvider sourceForOffline = ...; // e.g., new AssetDataProvider(...) o
 try
 {
     using var offlineSuppressor = new NoiseSuppressor(sourceForOffline, 48000, 1, NoiseSuppressionLevel.VeryHigh); 
-    var encoder = AudioEngine.Instance.CreateEncoder(CleanedFilePath, EncodingFormat.Wav, SampleFormat.F32, 1, 48000);
+    var encoder = AudioEngine.Instance.CreateEncoder(CleanedFilePath, "wav", SampleFormat.F32, 1, 48000);
 
     // Option 1: Process all into a single array (for smaller files) - See Samples\SoundFlow.Samples.NoiseSuppression
     // float[] cleanedAudio = offlineSuppressor.ProcessAll(); 

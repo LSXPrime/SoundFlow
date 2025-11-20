@@ -31,6 +31,64 @@ public static class MathHelper
     public static bool EnableSse { get; set; } = true;
 
     /// <summary>
+    /// Resamples an array of audio data using linear interpolation.
+    /// This is a high-performance method for offline, one-shot resampling that affects both speed and pitch.
+    /// </summary>
+    /// <param name="inputData">The raw audio samples to resample. The samples should be interleaved for multi-channel audio.</param>
+    /// <param name="channels">The number of audio channels in the input data.</param>
+    /// <param name="sourceRate">The original sample rate of the input data in Hz.</param>
+    /// <param name="targetRate">The desired sample rate for the output data in Hz.</param>
+    /// <returns>A new array containing the resampled audio data.</returns>
+    public static float[] ResampleLinear(float[] inputData, int channels, int sourceRate, int targetRate)
+    {
+        if (sourceRate == targetRate)
+            return (float[])inputData.Clone(); // No resampling needed, return a copy.
+
+        var inputLength = inputData.Length;
+        if (inputLength == 0 || channels == 0)
+            return [];
+
+        // Calculate the expected length of the output array.
+        var outputLength = (int)((long)inputLength * targetRate / sourceRate);
+        
+        // Ensure the output length is a multiple of the channel count.
+        outputLength -= outputLength % channels;
+        if (outputLength == 0)
+            return [];
+
+        var outputData = new float[outputLength];
+        
+        // The ratio of input frames to output frames.
+        var ratio = (double)(inputLength - channels) / (outputLength - channels);
+
+        var inputFrames = inputLength / channels;
+
+        for (var i = 0; i < outputLength; i += channels)
+        {
+            // Calculate the corresponding fractional frame position in the input array.
+            var inputFramePosition = (i / (double)channels) * ratio;
+            var inputFrameFloor = (int)Math.Floor(inputFramePosition);
+            var fraction = inputFramePosition - inputFrameFloor;
+
+            // Clamp frame indices to prevent reading out of bounds.
+            inputFrameFloor = Math.Min(inputFrameFloor, inputFrames - 1);
+            var inputFrameCeil = Math.Min(inputFrameFloor + 1, inputFrames - 1);
+
+            for (var c = 0; c < channels; c++)
+            {
+                // Get the two surrounding samples from the input for the current channel.
+                var sample1 = inputData[inputFrameFloor * channels + c];
+                var sample2 = inputData[inputFrameCeil * channels + c];
+                
+                // Perform linear interpolation: y = y1 + fraction * (y2 - y1)
+                outputData[i + c] = (float)(sample1 + fraction * (sample2 - sample1));
+            }
+        }
+
+        return outputData;
+    }
+    
+    /// <summary>
     /// Computes the Inverse Fast Fourier Transform (IFFT) of a complex array.
     /// </summary>
     /// <param name="data">The complex data array.</param>
@@ -71,7 +129,7 @@ public static class MathHelper
         // Use iterative Cooley-Tukey for SIMD, which is generally faster
         if (EnableAvx && Avx.IsSupported && n >= 4) // AVX can process 2 complex numbers (4 doubles) at a time
             FftAvx(data);
-        else if (EnableSse && Sse3.IsSupported && n >= 2) // SSE3 is needed for the efficient complex multiply
+        else if (EnableSse && Sse3.IsSupported) // SSE3 is needed for the efficient complex multiply
             FftSse(data);
         else // Fallback to recursive implementation if no SIMD is available
             FftScalar(data);

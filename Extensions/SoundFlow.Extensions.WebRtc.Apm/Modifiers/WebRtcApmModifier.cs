@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using SoundFlow.Abstracts;
 using SoundFlow.Abstracts.Devices;
 using SoundFlow.Enums;
+using SoundFlow.Utils;
 
 namespace SoundFlow.Extensions.WebRtc.Apm.Modifiers;
 
@@ -619,7 +620,7 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"WebRTC APM Modifier: Init Exception: {ex.Message}");
+                Log.Error($"[WebRtcApmModifier] Init Exception: {ex.Message}");
                 Enabled = false;
                 DisposeApmNativeResources();
                 throw;

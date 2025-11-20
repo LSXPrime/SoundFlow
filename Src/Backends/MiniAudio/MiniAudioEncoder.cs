@@ -1,8 +1,7 @@
-using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio.Enums;
 using SoundFlow.Enums;
-using SoundFlow.Exceptions;
 using SoundFlow.Interfaces;
+using SoundFlow.Utils;
 
 namespace SoundFlow.Backends.MiniAudio;
 
@@ -22,29 +21,30 @@ internal sealed unsafe class MiniAudioEncoder : ISoundEncoder
     /// Constructs a new encoder to write to the given stream in the specified format.
     /// </summary>
     /// <param name="stream">The stream to write encoded audio to.</param>
-    /// <param name="encodingFormat">The desired audio encoding format.</param>
     /// <param name="sampleFormat">The format of the input audio samples.</param>
     /// <param name="channels">The number of audio channels.</param>
     /// <param name="sampleRate">The sample rate of the input audio.</param>
-    public MiniAudioEncoder(Stream stream, EncodingFormat encodingFormat, SampleFormat sampleFormat, int channels,
+    public MiniAudioEncoder(Stream stream, SampleFormat sampleFormat, int channels,
         int sampleRate)
     {
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
         _channels = channels;
-
-        if (encodingFormat != EncodingFormat.Wav)
-            throw new NotSupportedException("MiniAudio only supports WAV encoding.");
         
         // Construct encoder config
-        var config = Native.AllocateEncoderConfig(encodingFormat, sampleFormat, (uint)channels, (uint)sampleRate);
+        var config = Native.AllocateEncoderConfig(sampleFormat, (uint)channels, (uint)sampleRate);
 
         // Allocate encoder and initialize
         _encoder = Native.AllocateEncoder();
-        var result = Native.EncoderInit(_writeCallback = WriteCallback, _seekCallback = SeekCallback, nint.Zero, config, _encoder);
+        
+        // Store delegates to prevent GC
+        _writeCallback = WriteCallback;
+        _seekCallback = SeekCallback;
+        
+        var result = Native.EncoderInit(_writeCallback, _seekCallback, nint.Zero, config, _encoder);
         Native.Free(config);
         
-        if (result != Result.Success)
-            throw new BackendException("MiniAudio", result, "Unable to initialize encoder.");
+        if (result != MiniAudioResult.Success)
+            throw new MiniaudioException("MiniAudio", result, "Unable to initialize encoder.");
     }
 
     /// <inheritdoc />
@@ -63,16 +63,15 @@ internal sealed unsafe class MiniAudioEncoder : ISoundEncoder
                 return 0;
 
             var framesToWrite = (ulong)(samples.Length / _channels);
-            ulong framesWritten = 0;
 
             fixed (float* pSamples = samples)
             {
-                var result = Native.EncoderWritePcmFrames(_encoder, (nint)pSamples, framesToWrite, &framesWritten);
-                if (result != Result.Success)
-                    throw new BackendException("MiniAudio", result, "Failed to write PCM frames to encoder.");
+                var result = Native.EncoderWritePcmFrames(_encoder, (nint)pSamples, framesToWrite, out var framesWritten);
+                if (result != MiniAudioResult.Success)
+                    throw new MiniaudioException("MiniAudio", result, "Failed to write PCM frames to encoder.");
+                
+                return (int)framesWritten * _channels;
             }
-
-            return (int)framesWritten * _channels;
         }
     }
 
@@ -98,38 +97,56 @@ internal sealed unsafe class MiniAudioEncoder : ISoundEncoder
     /// MiniAudio provides the encoded data in <paramref name="pBufferIn"/>,
     /// which is then written to the internal <see cref="_stream"/>.
     /// </summary>
-    private Result WriteCallback(nint pEncoder, nint pBufferIn, ulong bytesToWrite, out ulong* pBytesWritten)
+    private MiniAudioResult WriteCallback(nint pEncoder, nint pBufferIn, ulong bytesToWrite, out ulong pBytesWritten)
     {
-        lock (_syncLock)
+        try
         {
-            if (!_stream.CanWrite)
+            lock (_syncLock)
             {
-                pBytesWritten = (ulong*)0;
-                return Result.NoDataAvailable;
-            }
+                if (!_stream.CanWrite)
+                {
+                    pBytesWritten = 0;
+                    return MiniAudioResult.NoDataAvailable;
+                }
 
-            var bytes = new ReadOnlySpan<byte>((void*)pBufferIn, (int)bytesToWrite);
-            _stream.Write(bytes);
+                // Create a span directly from the native pointer to avoid allocation
+                var bytes = new ReadOnlySpan<byte>((void*)pBufferIn, (int)bytesToWrite);
+                _stream.Write(bytes);
             
-            pBytesWritten = (ulong*)bytesToWrite;
-            return Result.Success;
+                pBytesWritten = bytesToWrite;
+                return MiniAudioResult.Success;
+            }
+        }
+        catch (Exception)
+        {
+            pBytesWritten = 0;
+            Log.Critical("[MiniAudioEncoder] Failed to write PCM frames to encoder.");
+            return MiniAudioResult.IoError;
         }
     }
 
     /// <summary>
     /// Callback method for MiniAudio to seek the output stream.
     /// </summary>
-    private Result SeekCallback(nint pEncoder, long byteOffset, SeekPoint point)
+    private MiniAudioResult SeekCallback(nint pEncoder, long byteOffset, SeekPoint point)
     {
-        lock (_syncLock)
+        try
         {
-            if (!_stream.CanSeek)
-                return Result.NoDataAvailable;
+            lock (_syncLock)
+            {
+                if (!_stream.CanSeek)
+                    return MiniAudioResult.NoDataAvailable;
 
-            if (byteOffset >= 0 && byteOffset < _stream.Length - 1)
-                _stream.Seek(byteOffset, point == SeekPoint.FromCurrent ? SeekOrigin.Current : SeekOrigin.Begin);
+                if (byteOffset >= 0 && byteOffset < _stream.Length - 1)
+                    _stream.Seek(byteOffset, point == SeekPoint.FromCurrent ? SeekOrigin.Current : SeekOrigin.Begin);
             
-            return Result.Success;
+                return MiniAudioResult.Success;
+            }
+        }
+        catch (Exception)
+        {
+            Log.Critical("[MiniAudioEncoder] Failed to seek stream.");
+            return MiniAudioResult.IoError;
         }
     }
     
@@ -139,12 +156,12 @@ internal sealed unsafe class MiniAudioEncoder : ISoundEncoder
         {
             if (IsDisposed) return;
 
+            Native.EncoderUninit(_encoder);
+            Native.Free(_encoder);
+            
             // Keep delegates alive
             GC.KeepAlive(_writeCallback);
             GC.KeepAlive(_seekCallback);
-
-            Native.EncoderUninit(_encoder);
-            Native.Free(_encoder);
 
             IsDisposed = true;
         }

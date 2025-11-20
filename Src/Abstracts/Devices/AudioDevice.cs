@@ -16,17 +16,17 @@ public abstract class AudioDevice : IDisposable
     /// <summary>
     /// Gets the informational struct for the physical device.
     /// </summary>
-    public DeviceInfo? Info { get; internal init; }
+    public DeviceInfo? Info { get; protected init; }
     
     /// <summary>
     /// Gets the configuration struct for the physical device initialization process.
     /// </summary>
-    public DeviceConfig Config { get; internal init; }
+    public DeviceConfig Config { get; protected init; }
 
     /// <summary>
     /// Gets the capability of this device (e.g., Playback, Record).
     /// </summary>
-    public Capability Capability { get; internal init; }
+    public Capability Capability { get; protected init; }
     
     /// <summary>
     /// Gets the audio format information (sample rate, channels, etc.) for this device.

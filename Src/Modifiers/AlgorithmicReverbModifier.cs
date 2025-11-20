@@ -1,5 +1,9 @@
 using SoundFlow.Abstracts;
 using System.Runtime.CompilerServices;
+using SoundFlow.Enums;
+using SoundFlow.Interfaces;
+using SoundFlow.Midi.Enums;
+using SoundFlow.Midi.Structs;
 using SoundFlow.Structs;
 
 namespace SoundFlow.Modifiers;
@@ -85,6 +89,7 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
     /// <summary>
     /// Gets or sets the wet mix amount. Clamped between 0 and 1.
     /// </summary>
+    [ControllableParameter("Wet", 0.0, 1.0)]
     public float Wet
     {
         get => _wet;
@@ -94,6 +99,7 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
     /// <summary>
     /// Gets or sets the room size. Clamped between 0 and 1. Updates parameters when changed.
     /// </summary>
+    [ControllableParameter("Room Size", 0.0, 1.0)]
     public float RoomSize
     {
         get => _roomSize;
@@ -107,6 +113,7 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
     /// <summary>
     /// Gets or sets the damping factor. Clamped between 0 and 1. Updates parameters when changed.
     /// </summary>
+    [ControllableParameter("Damping", 0.0, 1.0)]
     public float Damp
     {
         get => _damp;
@@ -120,6 +127,7 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
     /// <summary>
     /// Gets or sets the stereo width. Clamped between 0 and 1.
     /// </summary>
+    [ControllableParameter("Width", 0.0, 1.0)]
     public float Width
     {
         get => _width;
@@ -129,6 +137,7 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
     /// <summary>
     /// Gets or sets the pre-delay time in milliseconds. Clamped between 0 and 100ms.
     /// </summary>
+    [ControllableParameter("Pre-Delay", 0.0, 100.0)]
     public float PreDelay
     {
         get => _preDelay;
@@ -142,10 +151,35 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
     /// <summary>
     /// Gets or sets the wet/dry mix ratio. Clamped between 0 and 1.
     /// </summary>
+    [ControllableParameter("Mix", 0.0, 1.0)]
     public float Mix
     {
         get => _mix;
         set => _mix = Math.Clamp(value, 0f, 1f);
+    }
+
+    /// <inheritdoc />
+    public override void ProcessMidiMessage(MidiMessage message)
+    {
+        if (message.Command != MidiCommand.ControlChange) return;
+        
+        var value = message.ControllerValue / 127.0f;
+
+        switch (message.ControllerNumber)
+        {
+            case 91: // Effects 1 Depth (Reverb Send/Wet)
+                Wet = value;
+                break;
+            case 93: // Effects 3 Depth (Chorus/Decay)
+                RoomSize = value;
+                break;
+            case 12: // Effect Control 1
+                Damp = value;
+                break;
+            case 13: // Effect Control 2
+                PreDelay = value * 100.0f; // Map 0-127 to 0-100ms
+                break;
+        }
     }
 
     private void UpdateReverbSettings()
@@ -200,11 +234,10 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
                 }
                 _combFilters[channel] = newChannelCombs;
             }
-            else // Filters exist, ensure parameters are up-to-date if UpdateParameters was called for other reasons
+            else
             {
                  for (var i = 0; i < NumCombs; i++)
                  {
-                    // Re-assign base tuning in case it could change (though CombTunings is static)
                     _modulatedCombTuning[channel * NumCombs + i] = CombTunings[channel % CombTunings.Length][i];
                     _combFilters[channel][i].Feedback = _roomSize;
                     _combFilters[channel][i].Damp = _damp;
@@ -259,12 +292,8 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
     /// <inheritdoc />
     public override float ProcessSample(float sample, int channel)
     {
-        if (channel < 0 || channel >= _format.Channels || channel >= _combFilters.Length) // Safety check
-        {
-            // This case should ideally not happen if AudioEngine.Channels is consistent
-            // Or could return 'sample' to bypass processing for misconfigured channels
+        if (channel < 0 || channel >= _format.Channels || channel >= _combFilters.Length)
             return sample;
-        }
 
         var lfo = MathF.Sin(_lfoPhase[channel]) * ModulationDepth;
         _lfoPhase[channel] += 2 * MathF.PI * ModulationRate / _format.SampleRate;
@@ -338,7 +367,6 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
             _damp2 = 1f - _damp1;
             _lastOut = 0f;
             _bufferIndex = 0;
-            // Initialize buffer robustly
             var clampedDelay = Math.Clamp(initialDelay, 1, MaxCombDelaySamples);
             _buffer = new float[clampedDelay];
         }
@@ -376,13 +404,10 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
             if (_buffer.Length == delay)
                 return;
 
-            // Reallocate buffer. This is expensive if called frequently per sample.
-            // For Freeverb-style LFO modulation on delay lines, a common approach is fixed-size buffer
-            // and modulated read pointers, or accepting slight artifacts/state reset.
             _buffer = new float[delay];
-            Array.Clear(_buffer, 0, _buffer.Length); // Clear new buffer
-            _bufferIndex = 0; // Reset index
-            _lastOut = 0f; // Reset filter state
+            Array.Clear(_buffer, 0, _buffer.Length);
+            _bufferIndex = 0;
+            _lastOut = 0f;
         }
     }
 
@@ -394,8 +419,7 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
 
         public AllPassFilter(int delay)
         {
-            // Clamp delay to a reasonable range for AllPass filters
-            delay = Math.Clamp(delay, 1, MaxCombDelaySamples / 2); // Typically shorter than combs
+            delay = Math.Clamp(delay, 1, MaxCombDelaySamples / 2);
             _buffer = new float[delay];
             _bufferIndex = 0;
         }

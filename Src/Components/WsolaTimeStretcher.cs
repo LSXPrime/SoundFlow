@@ -14,14 +14,14 @@ public class WsolaTimeStretcher
     private const int SearchRadiusFrames = (NominalAnalysisHopFrames * 3) / 8;
 
     private int _windowSizeSamples;
-    private float[] _inputBufferInternal;
+    private float[] _inputBufferInternal = [];
     private int _inputBufferValidSamples;
     private int _inputBufferReadPos;
-    private float[] _analysisWindow;
-    private float[] _prevOutputTail;
+    private float[] _analysisWindow = [];
+    private float[] _prevOutputTail = [];
     private int _actualPrevTailLength;
-    private float[] _currentAnalysisFrame;
-    private float[] _outputOverlapBuffer;
+    private float[] _currentAnalysisFrame = [];
+    private float[] _outputOverlapBuffer = [];
     private int _nominalHopSynthesisFrames;
     private bool _isFirstFrame = true;
     private bool _isFlushing;
@@ -55,9 +55,15 @@ public class WsolaTimeStretcher
         // Initialize Hann window for smooth fading.
         _analysisWindow = new float[DefaultWindowSizeFrames];
         for (var i = 0; i < DefaultWindowSizeFrames; i++)
+        {
             _analysisWindow[i] = 0.5f * (1 - (float)Math.Cos(2 * Math.PI * i / (DefaultWindowSizeFrames - 1)));
+        }
         _currentAnalysisFrame = new float[_windowSizeSamples];
-        _outputOverlapBuffer = new float[_windowSizeSamples];
+
+        // Ensure the overlap buffer is large enough for the current speed's hop size
+        var requiredBufferSize = Math.Max(_windowSizeSamples, _nominalHopSynthesisFrames * _channels);
+        _outputOverlapBuffer = new float[requiredBufferSize];
+        
         ResetState();
     }
 
@@ -72,6 +78,16 @@ public class WsolaTimeStretcher
         _speed = speed;
         // Calculate nominal synthesis hop frames based on the inverse of the speed.
         _nominalHopSynthesisFrames = (int)Math.Max(1, Math.Round(NominalAnalysisHopFrames / _speed));
+
+        //  Resize buffer if the new hop size exceeds the window size.
+        if (_channels > 0)
+        {
+            var requiredBufferSize = Math.Max(_windowSizeSamples, _nominalHopSynthesisFrames * _channels);
+            if (_outputOverlapBuffer.Length < requiredBufferSize)
+            {
+                _outputOverlapBuffer = new float[requiredBufferSize];
+            }
+        }
     }
 
     /// <summary>
