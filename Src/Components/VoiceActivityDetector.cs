@@ -110,7 +110,7 @@ public class VoiceActivityDetector : AudioAnalyzer
     /// <summary>
     /// Analyzes audio buffer for voice activity.
     /// </summary>
-    protected override void Analyze(Span<float> buffer, int channels)
+    protected override void Analyze(ReadOnlySpan<float> buffer, int channels)
     {
         AddSamplesToBuffer(buffer, channels);
 
@@ -160,7 +160,7 @@ public class VoiceActivityDetector : AudioAnalyzer
         }
     }
 
-    private void AddSamplesToBuffer(Span<float> buffer, int channels)
+    private void AddSamplesToBuffer(ReadOnlySpan<float> buffer, int channels)
     {
         if (channels == 1)
         {

@@ -45,7 +45,7 @@ jobs:
             cross_compile: true
 
           # macOS (Clang) - Universal binaries are avoided to produce discrete arch-specific libs.
-          - os: macos-latest
+          - os: macos-15-intel
             rid: osx-x64
             platform: macOS
             arch: x86_64

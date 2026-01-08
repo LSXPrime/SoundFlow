@@ -33,7 +33,7 @@ public class LevelMeterAnalyzer : AudioAnalyzer
     public float Peak { get; private set; }
 
     /// <inheritdoc/>
-    protected override void Analyze(Span<float> buffer, int channels)
+    protected override void Analyze(ReadOnlySpan<float> buffer, int channels)
     {
         var peak = 0f;
         var sumSquares = 0f;

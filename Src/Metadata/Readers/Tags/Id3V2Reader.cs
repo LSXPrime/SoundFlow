@@ -6,6 +6,39 @@ namespace SoundFlow.Metadata.Readers.Tags;
 
 internal class Id3V2Reader
 {
+    /// <summary>
+    /// A non-destructive utility method to quickly check for an ID3v2 tag and get its total size.
+    /// </summary>
+    /// <param name="stream">The stream to check. Must be seekable.</param>
+    /// <returns>A tuple containing a boolean indicating if a tag was found, and the total size of the tag in bytes.</returns>
+    public static async Task<(bool Found, long Size)> TryGetHeaderInfoAsync(Stream stream)
+    {
+        if (stream.Length < 10) return (false, 0);
+
+        var originalPosition = stream.Position;
+        try
+        {
+            stream.Position = 0;
+            var header = new byte[10];
+            var bytesRead = await stream.ReadAsync(header.AsMemory(0, 10));
+
+            if (bytesRead < 10 || Encoding.ASCII.GetString(header, 0, 3) != "ID3")
+            {
+                return (false, 0);
+            }
+
+            // Synchsafe integer conversion for tag body size
+            var tagBodySize = (header[6] << 21) | (header[7] << 14) | (header[8] << 7) | header[9];
+            var totalTagSize = 10 + tagBodySize;
+            
+            return (true, totalTagSize);
+        }
+        finally
+        {
+            stream.Position = originalPosition;
+        }
+    }
+
     public async Task<Result<(SoundTags?, long)>> ReadAsync(Stream stream, ReadOptions options)
     {
         var startPosition = stream.Position;
@@ -18,6 +51,7 @@ internal class Id3V2Reader
             return Result<(SoundTags?, long)>.Ok((null, 0));
         }
 
+        var majorVersion = header[3];
         // Synchsafe integer conversion
         var tagSize = (header[6] << 21) | (header[7] << 14) | (header[8] << 7) | header[9];
         long tagEndPosition = 10 + tagSize;
@@ -33,10 +67,21 @@ internal class Id3V2Reader
                 var frameId = Encoding.ASCII.GetString(frameHeader, 0, 4);
                 if (frameId.All(c => c == '\0')) break; // Padding
 
-                var frameSize = (frameHeader[4] << 24) | (frameHeader[5] << 16) | (frameHeader[6] << 8) |
-                                frameHeader[7];
+                int frameSize;
+                
+                // ID3v2.4 uses Synchsafe integers for frame sizes.
+                // ID3v2.3 uses standard integers.
+                if (majorVersion == 4)
+                {
+                    frameSize = (frameHeader[4] << 21) | (frameHeader[5] << 14) | (frameHeader[6] << 7) | frameHeader[7];
+                }
+                else
+                {
+                    frameSize = (frameHeader[4] << 24) | (frameHeader[5] << 16) | (frameHeader[6] << 8) | frameHeader[7];
+                }
+
                 if (frameSize <= 0 || stream.Position + frameSize > tagEndPosition)
-                    return new CorruptFrameError("ID3v2", "Invalid frame size or frame exceeds tag boundaries.");
+                    return new CorruptFrameError($"ID3v2.{majorVersion}", "Invalid frame size or frame exceeds tag boundaries.");
 
                 var nextFramePos = stream.Position + frameSize;
 
@@ -152,11 +197,7 @@ internal class Id3V2Reader
 
         var length = end - start;
         if (length <= 0) return string.Empty;
-
-        // **[REFINED FIX]**
-        // For multi-byte encodings like UTF-16, a malformed tag can have a data length
-        // that is not a multiple of the character size. To prevent a decoding error
-        // (which produces '�'), we must truncate the length to the last valid character boundary.
+        
         if (terminatorSize > 1 && length % terminatorSize != 0)
         {
             length -= length % terminatorSize; // e.g., for UTF-16, if length is 13, it becomes 12.

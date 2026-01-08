@@ -1,0 +1,31 @@
+﻿cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - family-names: "Abdallah"
+    given-names: "Ahmed"
+    email: "lsxprime@gmail.com"
+title: "SoundFlow: A high-performance, secure audio and MIDI engine for .NET"
+version: "1.4.0"
+date-released: "2026-01-06"
+repository-code: "https://github.com/LSXPrime/SoundFlow"
+url: "https://lsxprime.github.io/soundflow-docs/"
+license: MIT
+keywords:
+  - "audio-engine"
+  - ".net"
+  - "csharp"
+  - "digital-signal-processing"
+  - "midi"
+  - "cross-platform"
+  - "audio-synthesis"
+  - "audio-encryption"
+  - "audio-watermarking"
+abstract: >-
+  A high-performance, modular audio & MIDI engine for .NET8+. 
+  A complete toolkit for the entire audio lifecycle of
+  Playback, Recording, Multi-track Editing, Pro Synthesis
+  (MPE/SF2), Real-time DSP, and Visualization. Includes a
+  unique security suite for AES-256 encryption, acoustic
+  fingerprinting, and watermarking. Featuring SIMD and
+  NativeAOT support.

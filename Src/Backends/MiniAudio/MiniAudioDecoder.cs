@@ -159,6 +159,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
             case SampleFormat.S24:
                 for (var i = 0; i < sampleCount; i++)
                 {
+                    // Read 3 bytes as a 24-bit integer
                     var sample24 = (nativeBuffer[i * 3] << 0) | (nativeBuffer[i * 3 + 1] << 8) | (nativeBuffer[i * 3 + 2] << 16);
                     if ((sample24 & 0x800000) != 0) // Sign extension for negative values
                         sample24 |= unchecked((int)0xFF000000);
@@ -225,7 +226,12 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
                 }
 
                 var size = (int)bytesToRead;
-                
+                if (size <= 0) 
+                {
+                     pBytesRead = 0;
+                     return MiniAudioResult.Success;
+                }
+
                 // Use ArrayPool to avoid allocating a new buffer on every read
                 if (_rentedReadBuffer == null || _rentedReadBuffer.Length < size)
                 {
@@ -253,7 +259,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
         {
             // Swallow exception to prevent runtime crash, signal I/O error to miniaudio
             pBytesRead = 0;
-            Log.Critical("[MiniAudioDecoder] Failed to read PCM frames from decoder.");
+            Log.Critical("Failed to read PCM frames from decoder.");
             return MiniAudioResult.IoError;
         }
     }
@@ -276,7 +282,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
                 catch (NotSupportedException)
                 {
                     // Some streams claim CanSeek but throw on Length or Position
-                    Log.Critical("[MiniAudioDecoder] Stream does not support seeking.");
+                    Log.Critical("Stream does not support seeking.");
                     return MiniAudioResult.InvalidOperation;
                 }
 
@@ -285,7 +291,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
         }
         catch (Exception)
         {
-            Log.Critical("[MiniAudioDecoder] Failed to seek stream.");
+            Log.Critical("Failed to seek stream.");
             return MiniAudioResult.IoError;
         }
     }

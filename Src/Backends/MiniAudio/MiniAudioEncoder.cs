@@ -120,7 +120,7 @@ internal sealed unsafe class MiniAudioEncoder : ISoundEncoder
         catch (Exception)
         {
             pBytesWritten = 0;
-            Log.Critical("[MiniAudioEncoder] Failed to write PCM frames to encoder.");
+            Log.Critical("Failed to write PCM frames to encoder.");
             return MiniAudioResult.IoError;
         }
     }
@@ -145,7 +145,7 @@ internal sealed unsafe class MiniAudioEncoder : ISoundEncoder
         }
         catch (Exception)
         {
-            Log.Critical("[MiniAudioEncoder] Failed to seek stream.");
+            Log.Critical("Failed to seek stream.");
             return MiniAudioResult.IoError;
         }
     }

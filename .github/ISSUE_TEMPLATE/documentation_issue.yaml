@@ -87,7 +87,7 @@ body:
         ```csharp
         // Improved code example
         ```
-      render: shell
+      render: markdown
     validations:
       required: false
 

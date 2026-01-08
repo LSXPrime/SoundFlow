@@ -1,16 +1,19 @@
-using System.Text.Json;
-using SoundFlow.Interfaces;
-using SoundFlow.Providers;
-using SoundFlow.Enums;
-using SoundFlow.Abstracts;
 using System.Buffers;
 using System.Reflection;
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
+using SoundFlow.Abstracts;
 using SoundFlow.Editing.Mapping;
+using SoundFlow.Enums;
+using SoundFlow.Interfaces;
 using SoundFlow.Metadata.Midi;
 using SoundFlow.Midi.Abstracts;
 using SoundFlow.Midi.Interfaces;
 using SoundFlow.Midi.Routing.Nodes;
+using SoundFlow.Providers;
+using SoundFlow.Security;
+using SoundFlow.Security.Configuration;
 using SoundFlow.Structs;
 using SoundFlow.Utils;
 
@@ -23,13 +26,7 @@ public static class CompositionProjectManager
 {
     // The native file version this version of the library is designed to write and read.
     // Used for compatibility checks during loading.
-    private const string DefaultProjectFileVersion = "1.3.0";
-
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
+    private const string DefaultProjectFileVersion = "1.4.0";
 
     #region Saving
 
@@ -40,17 +37,32 @@ public static class CompositionProjectManager
     /// <param name="composition">The composition to save.</param>
     /// <param name="projectFilePath">The full path where the project file will be saved.</param>
     /// <param name="options">Configuration options for the save operation. If null, default options will be used.</param>
+    /// <param name="customTypeResolver">
+    /// An optional JSON type resolver for user-defined types. 
+    /// Required if your project contains custom Modifiers or Analyzers in a NativeAOT environment.
+    /// </param>
     public static async Task SaveProjectAsync(
         AudioEngine engine,
         Composition composition,
         string projectFilePath,
-        ProjectSaveOptions? options = null)
+        ProjectSaveOptions? options = null,
+        IJsonTypeInfoResolver? customTypeResolver = null)
     {
         ArgumentNullException.ThrowIfNull(composition);
         ArgumentException.ThrowIfNullOrEmpty(projectFilePath);
 
         // If no options are provided, create a default instance to avoid null checks everywhere.
         options ??= new ProjectSaveOptions();
+
+        // Combine internal context with optional user context
+        var jsonOptions = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            TypeInfoResolver = customTypeResolver != null
+                ? JsonTypeInfoResolver.Combine(SoundFlowJsonContext.Default, customTypeResolver)
+                : SoundFlowJsonContext.Default
+        };
         
         var projectData = new ProjectData
         {
@@ -62,9 +74,9 @@ public static class CompositionProjectManager
             TicksPerQuarterNote = composition.TicksPerQuarterNote,
             TempoTrack = composition.TempoTrack.Select(m => new ProjectTempoMarker
                 { Time = m.Time, BeatsPerMinute = m.BeatsPerMinute }).ToList(),
-            Modifiers = SerializeEffects(composition.Modifiers),
-            Analyzers = SerializeEffects(composition.Analyzers),
-            MidiTargets = SerializeEffects(composition.MidiTargets.OfType<MidiTargetNode>().Select(n => n.Target)),
+            Modifiers = SerializeEffects(composition.Modifiers, jsonOptions),
+            Analyzers = SerializeEffects(composition.Analyzers, jsonOptions),
+            MidiTargets = SerializeEffects(composition.MidiTargets.OfType<MidiTargetNode>().Select(n => n.Target), jsonOptions),
             MidiMappings = SerializeMappings(composition.MappingManager.Mappings)
         };
 
@@ -89,8 +101,8 @@ public static class CompositionProjectManager
                     IsSoloed = track.Settings.IsSoloed,
                     Volume = track.Settings.Volume,
                     Pan = track.Settings.Pan,
-                    Modifiers = SerializeEffects(track.Settings.Modifiers),
-                    Analyzers = SerializeEffects(track.Settings.Analyzers)
+                    Modifiers = SerializeEffects(track.Settings.Modifiers, jsonOptions),
+                    Analyzers = SerializeEffects(track.Settings.Analyzers, jsonOptions)
                 }
             };
 
@@ -138,8 +150,8 @@ public static class CompositionProjectManager
                         FadeOutCurve = segment.Settings.FadeOutCurve,
                         TimeStretchFactor = segment.Settings.TimeStretchFactor,
                         TargetStretchDuration = segment.Settings.TargetStretchDuration,
-                        Modifiers = SerializeEffects(segment.Settings.Modifiers),
-                        Analyzers = SerializeEffects(segment.Settings.Analyzers)
+                        Modifiers = SerializeEffects(segment.Settings.Modifiers, jsonOptions),
+                        Analyzers = SerializeEffects(segment.Settings.Analyzers, jsonOptions)
                     }
                 });
             }
@@ -158,7 +170,7 @@ public static class CompositionProjectManager
                     IsEnabled = midiTrack.Settings.IsEnabled,
                     IsMuted = midiTrack.Settings.IsMuted,
                     IsSoloed = midiTrack.Settings.IsSoloed,
-                    MidiModifiers = SerializeEffects(midiTrack.Settings.MidiModifiers)
+                    MidiModifiers = SerializeEffects(midiTrack.Settings.MidiModifiers, jsonOptions)
                 }
             };
 
@@ -183,10 +195,54 @@ public static class CompositionProjectManager
             projectData.MidiTracks.Add(projectMidiTrack);
         }
 
-        var json = JsonSerializer.Serialize(projectData, SerializerOptions);
+        var typeInfo = (JsonTypeInfo<ProjectData>)jsonOptions.GetTypeInfo(typeof(ProjectData));
+        var json = JsonSerializer.Serialize(projectData, typeInfo);
         await File.WriteAllTextAsync(projectFilePath, json);
 
+        // Signing Integration
+        if (options.SigningConfiguration != null)
+        {
+            var sigResult = await FileAuthenticator.SignFileAsync(projectFilePath, options.SigningConfiguration);
+            if (sigResult.IsSuccess)
+            {
+                var sigPath = projectFilePath + ".sig";
+                await File.WriteAllTextAsync(sigPath, sigResult.Value);
+            }
+            else
+            {
+                Log.Warning($"Failed to sign project file: {sigResult.Error?.Message}");
+            }
+        }
+
         composition.ClearDirtyFlag();
+    }
+
+    /// <summary>
+    /// Verifies the integrity and authenticity of a project file using a detached digital signature.
+    /// This method checks if the project file has been modified since it was signed.
+    /// </summary>
+    /// <param name="projectFilePath">The path to the project file (.sfproj).</param>
+    /// <param name="signatureFilePath">The path to the signature file (.sig). If null, defaults to projectFilePath + ".sig".</param>
+    /// <param name="config">The signature configuration containing the Public Key.</param>
+    /// <returns>A result containing true if the project is valid and authentic; otherwise, false or an error.</returns>
+    public static async Task<Result<bool>> VerifyProjectAsync(string projectFilePath, string? signatureFilePath, SignatureConfiguration config)
+    {
+        if (!File.Exists(projectFilePath))
+            return new NotFoundError("File", $"Project file not found: {projectFilePath}");
+
+        var sigPath = signatureFilePath ?? projectFilePath + ".sig";
+        if (!File.Exists(sigPath))
+            return new NotFoundError("File", $"Signature file not found: {sigPath}");
+
+        try
+        {
+            var signature = await File.ReadAllTextAsync(sigPath);
+            return await FileAuthenticator.VerifyFileAsync(projectFilePath, signature, config);
+        }
+        catch (Exception ex)
+        {
+            return new Error("An error occurred while verifying the project file.", ex);
+        }
     }
 
     private static async Task<ProjectSourceReference> CreateSourceReferenceAsync(
@@ -372,15 +428,33 @@ public static class CompositionProjectManager
     /// <param name="engine">The audio engine instance for context.</param>
     /// <param name="format">The audio format of the composition. Cannot be null.</param>
     /// <param name="projectFilePath">The full path of the project file to load.</param>
+    /// <param name="customTypeResolver">
+    /// An optional JSON type resolver for user-defined types. 
+    /// Required if your project contains custom Modifiers or Analyzers in a NativeAOT environment.
+    /// </param>
     /// <returns>A tuple containing the loaded Composition and a list of missing/unresolved source references.</returns>
     public static async Task<(Composition Composition, List<ProjectSourceReference> UnresolvedSources)>
-        LoadProjectAsync(AudioEngine engine, AudioFormat format, string projectFilePath)
+        LoadProjectAsync(
+            AudioEngine engine, 
+            AudioFormat format, 
+            string projectFilePath,
+            IJsonTypeInfoResolver? customTypeResolver = null)
     {
         if (!File.Exists(projectFilePath))
             throw new FileNotFoundException("Project file not found.", projectFilePath);
 
+        // Combine internal context with optional user context
+        var jsonOptions = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            TypeInfoResolver = customTypeResolver != null
+                ? JsonTypeInfoResolver.Combine(SoundFlowJsonContext.Default, customTypeResolver)
+                : SoundFlowJsonContext.Default
+        };
+
         var json = await File.ReadAllTextAsync(projectFilePath);
-        var projectData = JsonSerializer.Deserialize<ProjectData>(json, SerializerOptions)
+        var typeInfo = (JsonTypeInfo<ProjectData>)jsonOptions.GetTypeInfo(typeof(ProjectData));
+        var projectData = JsonSerializer.Deserialize(json, typeInfo)
                           ?? throw new JsonException("Failed to deserialize project data.");
 
         if (Version.TryParse(projectData.ProjectFileVersion, out var fileVersion) &&
@@ -400,10 +474,10 @@ public static class CompositionProjectManager
         };
         composition.TempoTrack.Clear();
         composition.TempoTrack.AddRange(projectData.TempoTrack.Select(m => new TempoMarker(m.Time, m.BeatsPerMinute)));
-        composition.Modifiers.AddRange(DeserializeEffects<SoundModifier>(format, projectData.Modifiers, composition));
-        composition.Analyzers.AddRange(DeserializeEffects<AudioAnalyzer>(format, projectData.Analyzers, composition));
+        composition.Modifiers.AddRange(DeserializeEffects<SoundModifier>(format, projectData.Modifiers, composition, jsonOptions));
+        composition.Analyzers.AddRange(DeserializeEffects<AudioAnalyzer>(format, projectData.Analyzers, composition, jsonOptions));
         
-        var deserializedMidiControllables = DeserializeEffects<IMidiControllable>(format, projectData.MidiTargets, composition);
+        var deserializedMidiControllables = DeserializeEffects<IMidiControllable>(format, projectData.MidiTargets, composition, jsonOptions);
         composition.MidiTargets.AddRange(deserializedMidiControllables.Select(c => new MidiTargetNode(c)));
 
 
@@ -466,9 +540,9 @@ public static class CompositionProjectManager
                 Pan = projectTrack.Settings.Pan,
             };
             trackSettings.Modifiers.AddRange(
-                DeserializeEffects<SoundModifier>(format, projectTrack.Settings.Modifiers, composition));
+                DeserializeEffects<SoundModifier>(format, projectTrack.Settings.Modifiers, composition, jsonOptions));
             trackSettings.Analyzers.AddRange(
-                DeserializeEffects<AudioAnalyzer>(format, projectTrack.Settings.Analyzers, composition));
+                DeserializeEffects<AudioAnalyzer>(format, projectTrack.Settings.Analyzers, composition, jsonOptions));
 
             var track = new Track(projectTrack.Name, trackSettings)
             {
@@ -505,9 +579,9 @@ public static class CompositionProjectManager
                     FadeOutCurve = projectSegment.Settings.FadeOutCurve,
                 };
                 segmentSettings.Modifiers.AddRange(
-                    DeserializeEffects<SoundModifier>(format, projectSegment.Settings.Modifiers, composition));
+                    DeserializeEffects<SoundModifier>(format, projectSegment.Settings.Modifiers, composition, jsonOptions));
                 segmentSettings.Analyzers.AddRange(
-                    DeserializeEffects<AudioAnalyzer>(format, projectSegment.Settings.Analyzers, composition));
+                    DeserializeEffects<AudioAnalyzer>(format, projectSegment.Settings.Analyzers, composition, jsonOptions));
 
                 var segment = new AudioSegment(
                     format,
@@ -542,7 +616,7 @@ public static class CompositionProjectManager
                 IsSoloed = projectMidiTrack.Settings.IsSoloed
             };
             trackSettings.MidiModifiers.AddRange(DeserializeEffects<MidiModifier>(default,
-                projectMidiTrack.Settings.MidiModifiers, composition));
+                projectMidiTrack.Settings.MidiModifiers, composition, jsonOptions));
 
             var midiTrack = new MidiTrack(projectMidiTrack.Name, settings: trackSettings)
             {
@@ -621,7 +695,7 @@ public static class CompositionProjectManager
             }
             catch (Exception ex)
             {
-                Log.Error($"[CompositionProjectManager] Error decoding embedded data for source ID {sourceRef.Id}: {ex.Message}");
+                Log.Error($"Error decoding embedded data for source ID {sourceRef.Id}: {ex.Message}");
                 return null;
             }
         }
@@ -690,7 +764,7 @@ public static class CompositionProjectManager
         }
         catch (Exception ex)
         {
-            Log.Error($"[CompositionProjectManager] Error loading MIDI data for source ID {sourceRef.Id}: {ex.Message}");
+            Log.Error($"Error loading MIDI data for source ID {sourceRef.Id}: {ex.Message}");
             return null;
         }
     }
@@ -750,7 +824,7 @@ public static class CompositionProjectManager
     #endregion
 
     // Helper method to serialize modifiers/analyzers
-    private static List<ProjectEffectData> SerializeEffects<T>(IEnumerable<T?> effects) where T : class
+    private static List<ProjectEffectData> SerializeEffects<T>(IEnumerable<T?> effects, JsonSerializerOptions jsonOptions) where T : class
     {
         var effectDataList = new List<ProjectEffectData>();
         foreach (var effect in effects)
@@ -777,19 +851,21 @@ public static class CompositionProjectManager
                 {
                     var value = prop.GetValue(effect);
                     if (value != null)
-                        parameters[prop.Name] =
-                            JsonValue.Create(JsonSerializer.SerializeToElement(value, SerializerOptions));
+                    {
+                        var propTypeInfo = jsonOptions.GetTypeInfo(prop.PropertyType);
+                        parameters[prop.Name] = JsonValue.Create(JsonSerializer.SerializeToElement(value, propTypeInfo));
+                    }
                 }
                 catch (Exception ex)
                 {
                     Log.Warning(
-                        $"[CompositionProjectManager] Could not serialize property '{prop.Name}' for effect type '{effectType.Name}': {ex.Message}");
+                        $"Could not serialize property '{prop.Name}' for effect type '{effectType.Name}': {ex.Message}");
                 }
             }
 
             effectDataList.Add(new ProjectEffectData
             {
-                TypeName = effectType.AssemblyQualifiedName ?? effectType.FullName ?? string.Empty,
+                TypeName = effectType.FullName ?? string.Empty,
                 IsEnabled = effect switch
                 {
                     SoundModifier sm => sm.Enabled,
@@ -797,7 +873,7 @@ public static class CompositionProjectManager
                     MidiModifier mm => mm.IsEnabled,
                     _ => false
                 },
-                Parameters = JsonDocument.Parse(parameters.ToJsonString(SerializerOptions))
+                Parameters = JsonDocument.Parse(parameters.ToJsonString(jsonOptions))
             });
         }
 
@@ -807,7 +883,7 @@ public static class CompositionProjectManager
 
     // Helper method to deserialize modifiers/analyzers
     private static List<T> DeserializeEffects<T>(AudioFormat format, List<ProjectEffectData> effectDataList,
-        Composition composition) where T : class
+        Composition composition, JsonSerializerOptions jsonOptions) where T : class
     {
         var targetEffectList = new List<T>();
         foreach (var effectData in effectDataList)
@@ -818,10 +894,10 @@ public static class CompositionProjectManager
                 continue;
             }
 
-            var effectType = Type.GetType(effectData.TypeName);
+            var effectType = TypeRegistry.ResolveType(effectData.TypeName);
             if (effectType == null)
             {
-                Log.Warning($"Could not find effect type '{effectData.TypeName}'. Effect will be skipped.");
+                Log.Warning($"Could not find effect type '{effectData.TypeName}'. Effect will be skipped. Ensure it is registered in TypeRegistry.");
                 continue;
             }
 
@@ -876,14 +952,14 @@ public static class CompositionProjectManager
                         {
                             try
                             {
-                                var value = JsonSerializer.Deserialize(jsonProp.GetRawText(), propInfo.PropertyType,
-                                    SerializerOptions);
+                                var propTypeInfo = jsonOptions.GetTypeInfo(propInfo.PropertyType);
+                                var value = jsonProp.Deserialize(propTypeInfo);
                                 propInfo.SetValue(typedInstance, value);
                             }
                             catch (Exception ex)
                             {
                                 Log.Warning(
-                                    $"[CompositionProjectManager] Could not deserialize or set property '{propInfo.Name}' for effect '{effectType.Name}': {ex.Message}. Using default.");
+                                    $"Could not deserialize or set property '{propInfo.Name}' for effect '{effectType.Name}': {ex.Message}. Using default.");
                             }
                         }
                     }
@@ -894,7 +970,7 @@ public static class CompositionProjectManager
             catch (Exception ex)
             {
                 Log.Error(
-                    $"[CompositionProjectManager] Error instantiating or setting parameters for effect '{effectData.TypeName}': {ex.Message}. Effect skipped.");
+                    $"Error instantiating or setting parameters for effect '{effectData.TypeName}': {ex.Message}. Effect skipped.");
             }
         }
 

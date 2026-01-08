@@ -1,10 +1,8 @@
 ﻿using System.Reflection;
-using SoundFlow.Abstracts.Devices;
 using SoundFlow.Interfaces;
 using SoundFlow.Midi.Devices;
 using SoundFlow.Midi.Enums;
 using SoundFlow.Midi.Structs;
-using SoundFlow.Structs;
 using SoundFlow.Utils;
 
 namespace SoundFlow.Editing.Mapping;
@@ -42,7 +40,7 @@ public sealed class MidiMappingManager : IDisposable
     public void AddInputDevice(MidiInputDevice device)
     {
         if (_subscribedDevices.Contains(device)) return;
-        
+
         device.OnMessageReceived += OnMidiMessageReceived;
         _subscribedDevices.Add(device);
         _highResCcParsers[device] = new HighResCcParser(this);
@@ -80,7 +78,7 @@ public sealed class MidiMappingManager : IDisposable
     {
         var mapping = _mappings.FirstOrDefault(m => m.Id == mappingId);
         if (mapping == null) return false;
-        
+
         _mappings.Remove(mapping);
         _memberCache.Remove(mapping.Id);
         _composition.MarkDirty();
@@ -96,25 +94,29 @@ public sealed class MidiMappingManager : IDisposable
             if (parser.ProcessMessage(message))
                 return; // The message was part of a high-resolution sequence and has been handled.
         }
-        
+
         // If not handled by the high-res parser, process as a standard 7-bit message.
         foreach (var mapping in _mappings)
         {
             if (!mapping.IsResolved) continue;
 
             var source = mapping.Source;
-            var match = source.DeviceName == deviceInfo.Name && (source.Channel == 0 || source.Channel == message.Channel);
+            var match = source.DeviceName == deviceInfo.Name &&
+                        (source.Channel == 0 || source.Channel == message.Channel);
             if (!match) continue;
 
             match = source.MessageType switch
             {
-                MidiMappingSourceType.ControlChange => message.Command == MidiCommand.ControlChange && message.ControllerNumber == source.MessageParameter,
-                MidiMappingSourceType.NoteOn => message.Command == MidiCommand.NoteOn && message.NoteNumber == source.MessageParameter,
-                MidiMappingSourceType.NoteOff => message.Command == MidiCommand.NoteOff && message.NoteNumber == source.MessageParameter,
+                MidiMappingSourceType.ControlChange => message.Command == MidiCommand.ControlChange &&
+                                                       message.ControllerNumber == source.MessageParameter,
+                MidiMappingSourceType.NoteOn => message.Command == MidiCommand.NoteOn &&
+                                                message.NoteNumber == source.MessageParameter,
+                MidiMappingSourceType.NoteOff => message.Command == MidiCommand.NoteOff &&
+                                                 message.NoteNumber == source.MessageParameter,
                 MidiMappingSourceType.PitchBend => message.Command == MidiCommand.PitchBend,
                 _ => false
             };
-            
+
             if (!match) continue;
 
             var inputValue = source.MessageType switch
@@ -125,13 +127,13 @@ public sealed class MidiMappingManager : IDisposable
                 MidiMappingSourceType.PitchBend => message.PitchBendValue,
                 _ => -1
             };
-            
+
             if (inputValue == -1) continue;
-            
+
             ApplyMapping(mapping, inputValue);
         }
     }
-    
+
     private void ApplyHighResMapping(int channel, int parameter, int value, MidiDeviceInfo deviceInfo)
     {
         foreach (var mapping in _mappings)
@@ -153,7 +155,8 @@ public sealed class MidiMappingManager : IDisposable
 
     private void ApplyMapping(MidiMapping mapping, int inputValue)
     {
-        if (!_composition.TryGetMappableObject(mapping.Target.TargetObjectId, out var targetObject) || targetObject == null)
+        if (!_composition.TryGetMappableObject(mapping.Target.TargetObjectId, out var targetObject) ||
+            targetObject == null)
         {
             mapping.IsResolved = false; // Mark as unresolved if target is missing
             return;
@@ -161,12 +164,17 @@ public sealed class MidiMappingManager : IDisposable
 
         if (!_memberCache.TryGetValue(mapping.Id, out var memberInfo))
         {
-            memberInfo = targetObject.GetType().GetMember(mapping.Target.TargetMemberName, BindingFlags.Public | BindingFlags.Instance).FirstOrDefault();
+#pragma warning disable IL2072
+            memberInfo = targetObject.GetType()
+                .GetMember(mapping.Target.TargetMemberName, BindingFlags.Public | BindingFlags.Instance)
+                .FirstOrDefault();
+#pragma warning restore IL2072
             if (memberInfo == null)
             {
                 mapping.IsResolved = false; // Mark as unresolved if member is missing
                 return;
             }
+
             _memberCache[mapping.Id] = memberInfo;
         }
 
@@ -190,23 +198,24 @@ public sealed class MidiMappingManager : IDisposable
         }
         catch (Exception ex)
         {
-            Log.Error($"[MIDI Mapping] Error applying mapping for '{mapping.Target.TargetMemberName}': {ex.Message}");
+            Log.Error($"Error applying mapping for '{mapping.Target.TargetMemberName}': {ex.Message}");
             _memberCache.Remove(mapping.Id);
         }
     }
 
-    private static void HandleAbsolute(MemberInfo memberInfo, IMidiMappable targetObject, int inputValue, ValueTransformer transformer)
+    private static void HandleAbsolute(MemberInfo memberInfo, IMidiMappable targetObject, int inputValue,
+        ValueTransformer transformer)
     {
         if (memberInfo is not PropertyInfo propInfo) return;
-        
+
         var attribute = propInfo.GetCustomAttribute<ControllableParameterAttribute>();
         if (attribute == null) return;
-        
+
         var transformedValue = TransformValue(inputValue, transformer, attribute);
         var convertedValue = Convert.ChangeType(transformedValue, propInfo.PropertyType);
         propInfo.SetValue(targetObject, convertedValue);
     }
-    
+
     private static void HandleToggle(MemberInfo memberInfo, IMidiMappable targetObject, int inputValue, int threshold)
     {
         if (memberInfo is not PropertyInfo propInfo || propInfo.PropertyType != typeof(bool)) return;
@@ -216,7 +225,8 @@ public sealed class MidiMappingManager : IDisposable
         propInfo.SetValue(targetObject, !currentValue);
     }
 
-    private static void HandleTrigger(MemberInfo memberInfo, IMidiMappable targetObject, int inputValue, MidiMapping mapping)
+    private static void HandleTrigger(MemberInfo memberInfo, IMidiMappable targetObject, int inputValue,
+        MidiMapping mapping)
     {
         if (memberInfo is not MethodInfo methodInfo) return;
         if (inputValue < mapping.ActivationThreshold) return;
@@ -226,20 +236,21 @@ public sealed class MidiMappingManager : IDisposable
 
         if (methodParams.Length != mappingArgs.Count)
         {
-            Log.Warning($"[MIDI Mapping] Method '{methodInfo.Name}' signature does not match mapping argument count.");
+            Log.Warning($"Method '{methodInfo.Name}' signature does not match mapping argument count.");
             return;
         }
-        
+
         var invokeArgs = new object?[methodParams.Length];
         for (var i = 0; i < methodParams.Length; i++)
         {
             var argDef = mappingArgs[i];
             var paramInfo = methodParams[i];
-            
+
             var attribute = paramInfo.GetCustomAttribute<ControllableParameterAttribute>();
             if (attribute == null)
             {
-                Log.Warning($"[MIDI Mapping] Method parameter '{paramInfo.Name}' is missing [ControllableParameter] attribute.");
+                Log.Warning(
+                    $"Method parameter '{paramInfo.Name}' is missing [ControllableParameter] attribute.");
                 return;
             }
 
@@ -252,11 +263,12 @@ public sealed class MidiMappingManager : IDisposable
             // Convert to the method parameter's actual type
             invokeArgs[i] = Convert.ChangeType(value, paramInfo.ParameterType);
         }
-        
+
         methodInfo.Invoke(targetObject, invokeArgs);
     }
-    
-    private static void HandleRelative(MemberInfo memberInfo, IMidiMappable targetObject, int inputValue, ValueTransformer transformer)
+
+    private static void HandleRelative(MemberInfo memberInfo, IMidiMappable targetObject, int inputValue,
+        ValueTransformer transformer)
     {
         if (memberInfo is not PropertyInfo propInfo || !IsNumericType(propInfo.PropertyType)) return;
 
@@ -264,20 +276,21 @@ public sealed class MidiMappingManager : IDisposable
         if (attribute == null) return;
 
         var currentValue = Convert.ToSingle(propInfo.GetValue(targetObject));
-        
+
         // Standard relative encoder behavior: 64 is center, <64 is down, >64 is up
         var delta = inputValue - 64;
-        
+
         // Scale the delta based on the target range to define the step size
         var step = (float)((attribute.MaxValue - attribute.MinValue) / (transformer.SourceMax - transformer.SourceMin));
         var newValue = currentValue + (delta * step);
         newValue = Math.Clamp(newValue, (float)attribute.MinValue, (float)attribute.MaxValue);
-        
+
         var convertedValue = Convert.ChangeType(newValue, propInfo.PropertyType);
         propInfo.SetValue(targetObject, convertedValue);
     }
 
-    private static float TransformValue(int inputValue, ValueTransformer transformer, ControllableParameterAttribute attribute)
+    private static float TransformValue(int inputValue, ValueTransformer transformer,
+        ControllableParameterAttribute attribute)
     {
         // 1. Normalize MIDI input to [0, 1] based on transformer's source range
         var normalizedMidi = (inputValue - transformer.SourceMin) / (transformer.SourceMax - transformer.SourceMin);
@@ -290,7 +303,7 @@ public sealed class MidiMappingManager : IDisposable
             MidiMappingCurveType.Logarithmic => MathF.Sqrt(normalizedMidi),
             _ => normalizedMidi
         };
-        
+
         // 3. Denormalize from the transformer's target range (e.g. 0-1) to create the final normalized value
         var finalNormalized = transformer.TargetMin + normalizedMidi * (transformer.TargetMax - transformer.TargetMin);
         finalNormalized = Math.Clamp(finalNormalized, 0.0f, 1.0f);
@@ -302,7 +315,7 @@ public sealed class MidiMappingManager : IDisposable
             var maxLog = Math.Log(attribute.MaxValue);
             return (float)Math.Exp(minLog + (maxLog - minLog) * finalNormalized);
         }
-        
+
         // Linear scale
         return (float)(attribute.MinValue + (attribute.MaxValue - attribute.MinValue) * finalNormalized);
     }
@@ -319,6 +332,7 @@ public sealed class MidiMappingManager : IDisposable
         {
             device.OnMessageReceived -= OnMidiMessageReceived;
         }
+
         _subscribedDevices.Clear();
         _highResCcParsers.Clear();
     }
@@ -352,14 +366,28 @@ public sealed class MidiMappingManager : IDisposable
             switch (message.ControllerNumber)
             {
                 // NRPN
-                case 99: state.NrpnMsb = message.ControllerValue; state.RpnMsb = -1; state.RpnLsb = -1; return true;
-                case 98: state.NrpnLsb = message.ControllerValue; return true;
+                case 99:
+                    state.NrpnMsb = message.ControllerValue;
+                    state.RpnMsb = -1;
+                    state.RpnLsb = -1;
+                    return true;
+                case 98:
+                    state.NrpnLsb = message.ControllerValue;
+                    return true;
                 // RPN
-                case 101: state.RpnMsb = message.ControllerValue; state.NrpnMsb = -1; state.NrpnLsb = -1; return true;
-                case 100: state.RpnLsb = message.ControllerValue; return true;
-                
+                case 101:
+                    state.RpnMsb = message.ControllerValue;
+                    state.NrpnMsb = -1;
+                    state.NrpnLsb = -1;
+                    return true;
+                case 100:
+                    state.RpnLsb = message.ControllerValue;
+                    return true;
+
                 // Data Entry
-                case 6: state.DataMsb = message.ControllerValue; return true;
+                case 6:
+                    state.DataMsb = message.ControllerValue;
+                    return true;
                 case 38:
                     if (state.DataMsb != -1)
                     {
@@ -376,14 +404,18 @@ public sealed class MidiMappingManager : IDisposable
                         if (parameter != -1)
                         {
                             var value = (state.DataMsb << 7) | message.ControllerValue;
-                            var device = manager._subscribedDevices.FirstOrDefault(d => manager._highResCcParsers[d] == this);
-                            if(device != null) manager.ApplyHighResMapping(message.Channel, parameter, value, device.Info);
-                            
+                            var device =
+                                manager._subscribedDevices.FirstOrDefault(d => manager._highResCcParsers[d] == this);
+                            if (device != null)
+                                manager.ApplyHighResMapping(message.Channel, parameter, value, device.Info);
+
                             // Reset data entry state after use
-                            state.DataMsb = -1; 
+                            state.DataMsb = -1;
                         }
+
                         return true;
                     }
+
                     break;
             }
 

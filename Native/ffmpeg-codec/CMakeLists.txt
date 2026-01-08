@@ -3,6 +3,12 @@ project(SoundFlowFFmpeg C)
 
 cmake_policy(SET CMP0135 NEW)
 
+# LAME - Set macOS Deployment Target
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13")
+    message(STATUS "CMAKE_OSX_DEPLOYMENT_TARGET not set. Defaulting to ${CMAKE_OSX_DEPLOYMENT_TARGET}")
+endif()
+
 # Helper – normalise CPU names that vary between OSes / toolchains
 function(normalise_arch IN OUT)
     string(TOLOWER "${IN}" _arch)
@@ -71,16 +77,27 @@ endif()
 set(RUNTIME_ID "${TARGET_OS}-${TARGET_ARCH}")
 set(OUTPUT_DIR "${CMAKE_BINARY_DIR}/runtimes/${RUNTIME_ID}/native")
 set(FFMPEG_INSTALL_DIR "${CMAKE_BINARY_DIR}/ffmpeg-install")
+set(LAME_INSTALL_DIR "${CMAKE_BINARY_DIR}/lame-install")
 
-# FFmpeg – download/build parameters
+# FFmpeg & LAME download parameters
 set(FFMPEG_VERSION "8.0")
 set(FFMPEG_URL "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz")
+set(LAME_URL "https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz")
 
 if(NOT CMAKE_BUILD_PARALLEL_LEVEL)
     set(CMAKE_BUILD_PARALLEL_LEVEL 1)
 endif()
 
-# Common configure flags
+# Common LAME Configure Flags
+set(LAME_COMMON_FLAGS
+    --disable-shared
+    --enable-static
+    --with-pic
+    --disable-frontend
+    --disable-decoder
+)
+
+# Common FFmpeg Configure Flags
 set(FFMPEG_COMMON_FLAGS
         --disable-gpl
         --disable-nonfree
@@ -90,6 +107,12 @@ set(FFMPEG_COMMON_FLAGS
         --enable-static
         --enable-pic
         --disable-symver
+        
+
+        # Library Linking (LAME Support)
+        --enable-libmp3lame
+        "--extra-cflags=-I${LAME_INSTALL_DIR}/include"
+        "--extra-ldflags=-L${LAME_INSTALL_DIR}/lib"
 
         # General Disables
         --disable-doc
@@ -288,6 +311,7 @@ set(FFMPEG_COMMON_FLAGS
         --enable-encoder=eac3
         --enable-encoder=flac
         --enable-encoder=mp2
+        --enable-encoder=libmp3lame
         --enable-encoder=nellymoser
         --enable-encoder=opus
         --enable-encoder=sbc
@@ -346,6 +370,9 @@ if(TARGET_OS STREQUAL "win")
         set(FFMPEG_ARCH "aarch64")
     endif()
 
+    # LAME MinGW setup
+    list(APPEND LAME_COMMON_FLAGS --host=${FFMPEG_ARCH}-w64-mingw32)
+
     list(APPEND FFMPEG_COMMON_FLAGS
             --target-os=mingw32
             --arch=${FFMPEG_ARCH}
@@ -359,18 +386,26 @@ if(TARGET_OS STREQUAL "win")
 elseif(TARGET_OS STREQUAL "osx")
     if(TARGET_ARCH STREQUAL "x64")
         set(FFMPEG_ARCH "x86_64")
+        set(MACOS_ARCH_CLANG "x86_64")
         set(MACOS_TARGET "x86_64-apple-darwin")
     else()
         set(FFMPEG_ARCH "aarch64")
-        set(MACOS_TARGET "arm64-apple-darwin")
+        set(MACOS_ARCH_CLANG "arm64")
+        set(MACOS_TARGET "aarch64-apple-darwin")
     endif()
+
+    # LAME macOS setup
+    list(APPEND LAME_COMMON_FLAGS
+            --host=${MACOS_TARGET}
+            "CFLAGS=-arch ${MACOS_ARCH_CLANG} -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET} -Wno-implicit-function-declaration"
+            "LDFLAGS=-arch ${MACOS_ARCH_CLANG} -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
 
     list(APPEND FFMPEG_COMMON_FLAGS
             --target-os=darwin
             --arch=${FFMPEG_ARCH}
             --enable-cross-compile
-            "--extra-cflags=-target ${MACOS_TARGET}"
-            "--extra-ldflags=-target ${MACOS_TARGET}"
+            "--extra-cflags=-target ${MACOS_TARGET} -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}"
+            "--extra-ldflags=-target ${MACOS_TARGET} -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}"
             --enable-runtime-cpudetect)
 
 elseif(TARGET_OS STREQUAL "linux")
@@ -382,6 +417,13 @@ elseif(TARGET_OS STREQUAL "linux")
     else()
         set(FFMPEG_ARCH "aarch64")
         set(LINUX_CROSS_PREFIX "aarch64-linux-gnu-")
+    endif()
+
+    # LAME Linux setup
+    if(CMAKE_CROSSCOMPILING)
+        # remove the trailing dash from prefix to get the host
+        string(REGEX REPLACE "-$" "" LAME_HOST "${LINUX_CROSS_PREFIX}")
+        list(APPEND LAME_COMMON_FLAGS --host=${LAME_HOST})
     endif()
 
     list(APPEND FFMPEG_COMMON_FLAGS
@@ -419,6 +461,14 @@ elseif(TARGET_OS STREQUAL "android")
     # Construct the full path to the correct NDK compiler wrapper script
     set(ANDROID_COMPILER_WRAPPER "${NDK_TOOLCHAIN_BIN_DIR}/${ANDROID_TARGET_TRIPLE}${ANDROID_API_LEVEL}-clang")
 
+    # LAME Android setup
+    list(APPEND LAME_COMMON_FLAGS
+            --host=${ANDROID_TARGET_TRIPLE}
+            --with-sysroot=${CMAKE_SYSROOT}
+            "CC=${ANDROID_COMPILER_WRAPPER}"
+            "AR=${NDK_TOOLCHAIN_BIN_DIR}/llvm-ar"
+            "RANLIB=${NDK_TOOLCHAIN_BIN_DIR}/llvm-ranlib")
+
     list(APPEND FFMPEG_COMMON_FLAGS
             --target-os=android
             --arch=${FFMPEG_ARCH}
@@ -429,6 +479,12 @@ elseif(TARGET_OS STREQUAL "android")
             --strip=${NDK_TOOLCHAIN_BIN_DIR}/llvm-strip)
 
 elseif(TARGET_OS STREQUAL "ios")
+    # LAME iOS setup
+    list(APPEND LAME_COMMON_FLAGS
+            --host=aarch64-apple-darwin
+            "CFLAGS=-arch arm64 -isysroot ${CMAKE_OSX_SYSROOT} -miphoneos-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET} -Wno-implicit-function-declaration"
+            "LDFLAGS=-arch arm64 -isysroot ${CMAKE_OSX_SYSROOT} -miphoneos-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+
     list(APPEND FFMPEG_COMMON_FLAGS
             --target-os=darwin
             --arch=aarch64
@@ -457,18 +513,33 @@ endif()
 # External build of FFmpeg
 find_program(BASH_EXECUTABLE bash REQUIRED)
 
-if(CMAKE_GENERATOR STREQUAL "MinGW Makefiles")
-    find_program(FFMPEG_MAKE_EXECUTABLE make HINTS "C:/msys64/usr/bin")
-    if(NOT FFMPEG_MAKE_EXECUTABLE)
-        message(FATAL_ERROR "Could not find MSYS 'make'. It's required to build FFmpeg with MinGW Makefiles.")
-    endif()
-else()
-    # For all other generators (Unix Makefiles, Ninja, etc.), CMAKE_MAKE_PROGRAM is fine.
-    set(FFMPEG_MAKE_EXECUTABLE ${CMAKE_MAKE_PROGRAM})
+find_program(MAKE_EXECUTABLE NAMES gmake make HINTS "C:/msys64/usr/bin" "/usr/bin")
+if(NOT MAKE_EXECUTABLE)
+    message(FATAL_ERROR "Could not find 'make' or 'gmake'. It is required to build FFmpeg/LAME via autotools.")
 endif()
+message(STATUS "Using Make program: ${MAKE_EXECUTABLE}")
 
 include(ExternalProject)
+
+# LAME Dependency
+ExternalProject_Add(lame_dependency
+    URL               ${LAME_URL}
+    PREFIX            ${CMAKE_BINARY_DIR}/lame
+    INSTALL_DIR       ${LAME_INSTALL_DIR}
+    BUILD_IN_SOURCE   1
+    CONFIGURE_COMMAND ${BASH_EXECUTABLE} <SOURCE_DIR>/configure
+                      --prefix=${LAME_INSTALL_DIR}
+                      ${LAME_COMMON_FLAGS}
+    BUILD_COMMAND     ${MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL}
+    INSTALL_COMMAND   ${MAKE_EXECUTABLE} install
+    LOG_DOWNLOAD      1
+    LOG_CONFIGURE     1
+    LOG_BUILD         1
+    LOG_INSTALL       1
+)
+
 ExternalProject_Add(ffmpeg_dependency
+        DEPENDS           lame_dependency
         URL               ${FFMPEG_URL}
         PREFIX            ${CMAKE_BINARY_DIR}/ffmpeg
         INSTALL_DIR       ${FFMPEG_INSTALL_DIR}
@@ -476,8 +547,8 @@ ExternalProject_Add(ffmpeg_dependency
         CONFIGURE_COMMAND ${BASH_EXECUTABLE} <SOURCE_DIR>/configure
         --prefix=${FFMPEG_INSTALL_DIR}
         ${FFMPEG_COMMON_FLAGS}
-        BUILD_COMMAND     ${FFMPEG_MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL}
-        INSTALL_COMMAND   ${FFMPEG_MAKE_EXECUTABLE} install
+        BUILD_COMMAND     ${MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL}
+        INSTALL_COMMAND   ${MAKE_EXECUTABLE} install
         LOG_DOWNLOAD      1
         LOG_CONFIGURE     1
         LOG_BUILD         1
@@ -519,10 +590,13 @@ target_include_directories(soundflow-ffmpeg PRIVATE
         ${FFMPEG_INSTALL_DIR}/include)
 
 target_link_directories(soundflow-ffmpeg PRIVATE
-        ${FFMPEG_INSTALL_DIR}/lib)
+        ${FFMPEG_INSTALL_DIR}/lib
+        ${LAME_INSTALL_DIR}/lib)
 
+# Link libraries by name.
 target_link_libraries(soundflow-ffmpeg PRIVATE
-        avformat avcodec swresample avutil)
+        avformat avcodec swresample avutil
+        mp3lame)
 
 # Platform system libraries
 if(TARGET_OS STREQUAL "win")

@@ -620,7 +620,7 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
             }
             catch (Exception ex)
             {
-                Log.Error($"[WebRtcApmModifier] Init Exception: {ex.Message}");
+                Log.Error($"Init Exception: {ex.Message}");
                 Enabled = false;
                 DisposeApmNativeResources();
                 throw;

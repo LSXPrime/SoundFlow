@@ -65,7 +65,7 @@ body:
         // public class NewComponent : SoundComponent { ... }
         // public void ExistingComponent.NewMethod(ParameterType param) { ... }
         ```
-      render: shell
+      render: csharp
     validations:
       required: false
 

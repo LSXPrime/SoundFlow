@@ -1,9 +1,7 @@
-﻿using SoundFlow.Abstracts.Devices;
-using SoundFlow.Midi.Devices;
+﻿using SoundFlow.Midi.Devices;
 using SoundFlow.Midi.PortMidi.Enums;
 using SoundFlow.Midi.PortMidi.Exceptions;
 using SoundFlow.Midi.Structs;
-using SoundFlow.Structs;
 using SoundFlow.Utils;
 
 namespace SoundFlow.Midi.PortMidi.Devices;
@@ -67,7 +65,7 @@ internal sealed class PortMidiInputDevice : MidiInputDevice
                                 // A non-real-time status byte terminates any ongoing SysEx message.
                                 if (inSysEx && (status & 0x80) != 0 && status < 0xF8 && status != 0xF7)
                                 {
-                                    Log.Warning("[PortMidi] SysEx message was truncated by a new status byte.");
+                                    Log.Warning("SysEx message was truncated by a new status byte.");
                                     inSysEx = false;
                                     sysexBuffer.Clear();
                                 }

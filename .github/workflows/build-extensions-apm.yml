@@ -48,7 +48,7 @@ jobs:
             cross_file: "linux-arm64.crossfile"
 
           # macOS builds
-          - os: macos-latest
+          - os: macos-15-intel
             rid: osx-x64
             platform: macOS
             arch: x86_64

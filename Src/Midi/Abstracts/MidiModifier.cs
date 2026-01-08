@@ -1,6 +1,6 @@
-﻿using SoundFlow.Interfaces;
+﻿using System.Diagnostics.CodeAnalysis;
+using SoundFlow.Interfaces;
 using SoundFlow.Midi.Structs;
-using SoundFlow.Structs;
 
 namespace SoundFlow.Midi.Abstracts;
 
@@ -8,6 +8,7 @@ namespace SoundFlow.Midi.Abstracts;
 /// Base class for real-time MIDI processing components (MIDI effects).
 /// Implementations of this class can filter, transform, or generate MIDI messages.
 /// </summary>
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicMethods)]
 public abstract class MidiModifier : IMidiMappable
 {
     /// <inheritdoc />

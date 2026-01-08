@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
 using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
@@ -13,8 +16,21 @@ namespace SoundFlow.Providers;
 /// <remarks>Loads full audio directly to memory.</remarks>
 public sealed class AssetDataProvider : ISoundDataProvider
 {
-    private readonly float[] _data;
+    private float[]? _data;
     private int _samplePosition;
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="AssetDataProvider" /> class by reading from a file path.
+    ///     This method handles the stream lifecycle internally, ensuring the file handle is closed immediately after reading.
+    /// </summary>
+    /// <param name="engine">The audio engine instance.</param>
+    /// <param name="filePath">The absolute or relative path to the audio file.</param>
+    /// <param name="options">Optional configuration for metadata reading.</param>
+    public AssetDataProvider(AudioEngine engine, string filePath, ReadOptions? options = null)
+    {
+        using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        Initialize(engine, stream, options ?? new ReadOptions(), null);
+    }
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="AssetDataProvider" /> class by reading from a stream and detecting its format.
@@ -25,44 +41,7 @@ public sealed class AssetDataProvider : ISoundDataProvider
     /// <param name="options">Optional configuration for metadata reading.</param>
     public AssetDataProvider(AudioEngine engine, Stream stream, ReadOptions? options = null)
     {
-        options ??= new ReadOptions();
-        
-        var formatInfoResult = SoundMetadataReader.Read(stream, options);
-        ISoundDecoder decoder;
-
-        if (formatInfoResult is { IsSuccess: true, Value: not null })
-        {
-            FormatInfo = formatInfoResult.Value;
-            var discoveredFormat = new AudioFormat
-            {
-                Format = SampleFormat.F32,
-                Channels = FormatInfo.ChannelCount,
-                Layout = AudioFormat.GetLayoutFromChannels(FormatInfo.ChannelCount),
-                SampleRate = FormatInfo.SampleRate
-            };
-            stream.Position = 0;
-            decoder = engine.CreateDecoder(stream, FormatInfo.FormatIdentifier, discoveredFormat);
-        }
-        else
-        {
-            stream.Position = 0;
-            decoder = engine.CreateDecoder(stream, out var detectedFormat);
-            FormatInfo = new SoundFormatInfo
-            {
-                FormatName = "Unknown (Probed)",
-                FormatIdentifier = "unknown",
-                ChannelCount = detectedFormat.Channels,
-                SampleRate = detectedFormat.SampleRate,
-                Duration = decoder.Length > 0 && detectedFormat.SampleRate > 0
-                    ? TimeSpan.FromSeconds((double)decoder.Length / (detectedFormat.SampleRate * detectedFormat.Channels))
-                    : TimeSpan.Zero
-            };
-        }
-        
-        _data = Decode(decoder);
-        decoder.Dispose();
-        SampleRate = FormatInfo.SampleRate;
-        Length = _data.Length;
+        Initialize(engine, stream, options ?? new ReadOptions(), null);
     }
 
     /// <summary>
@@ -74,40 +53,13 @@ public sealed class AssetDataProvider : ISoundDataProvider
     /// <param name="stream">The stream to read audio data from.</param>
     public AssetDataProvider(AudioEngine engine, AudioFormat format, Stream stream)
     {
-        var formatInfoResult = SoundMetadataReader.Read(stream, new ReadOptions
+        var options = new ReadOptions
         {
-            ReadTags = false, 
-            ReadAlbumArt = false, 
+            ReadTags = false,
+            ReadAlbumArt = false,
             DurationAccuracy = DurationAccuracy.FastEstimate
-        });
-        
-        ISoundDecoder decoder;
-        if (formatInfoResult is { IsSuccess: true, Value: not null })
-        {
-            FormatInfo = formatInfoResult.Value;
-            stream.Position = 0;
-            decoder = engine.CreateDecoder(stream, FormatInfo.FormatIdentifier, format);
-        }
-        else
-        {
-            stream.Position = 0;
-            decoder = engine.CreateDecoder(stream, out var detectedFormat, format);
-            FormatInfo = new SoundFormatInfo
-            {
-                FormatName = "Unknown (Probed)",
-                FormatIdentifier = "unknown",
-                ChannelCount = detectedFormat.Channels,
-                SampleRate = detectedFormat.SampleRate,
-                Duration = decoder.Length > 0 && detectedFormat.SampleRate > 0
-                    ? TimeSpan.FromSeconds((double)decoder.Length / (detectedFormat.SampleRate * detectedFormat.Channels))
-                    : TimeSpan.Zero
-            };
-        }
-
-        _data = Decode(decoder);
-        decoder.Dispose();
-        SampleRate = format.SampleRate;
-        Length = _data.Length;
+        };
+        Initialize(engine, stream, options, format);
     }
 
     /// <summary>
@@ -121,43 +73,108 @@ public sealed class AssetDataProvider : ISoundDataProvider
     {
     }
 
+    private void Initialize(AudioEngine engine, Stream stream, ReadOptions options, AudioFormat? explicitFormat)
+    {
+        var formatInfoResult = SoundMetadataReader.Read(stream, options);
+        ISoundDecoder decoder;
+
+        // Reset stream position before decoding attempts
+        stream.Position = 0;
+
+        if (formatInfoResult is { IsSuccess: true, Value: not null })
+        {
+            FormatInfo = formatInfoResult.Value;
+            
+            // If explicit format is provided, use it; otherwise, derive from metadata
+            var targetFormat = explicitFormat ?? new AudioFormat
+            {
+                Format = SampleFormat.F32,
+                Channels = FormatInfo.ChannelCount,
+                Layout = AudioFormat.GetLayoutFromChannels(FormatInfo.ChannelCount),
+                SampleRate = FormatInfo.SampleRate
+            };
+
+            decoder = engine.CreateDecoder(stream, FormatInfo.FormatIdentifier, targetFormat);
+        }
+        else
+        {
+            // Fallback to probing
+            decoder = explicitFormat.HasValue ? engine.CreateDecoder(stream, out _, explicitFormat.Value) : engine.CreateDecoder(stream, out _);
+
+            FormatInfo = new SoundFormatInfo
+            {
+                FormatName = "Unknown (Probed)",
+                FormatIdentifier = "unknown",
+                ChannelCount = explicitFormat?.Channels ?? 0, // Fallback if available, or 0 (decoder usually provides valid info)
+                SampleRate = explicitFormat?.SampleRate ?? 0,
+                Duration = TimeSpan.Zero
+            };
+            
+            // Refine FormatInfo based on actual decoder properties if probe succeeded
+            if (decoder is { Channels: > 0, SampleRate: > 0 })
+            {
+                FormatInfo = FormatInfo with
+                {
+                    ChannelCount = decoder.Channels,
+                    SampleRate = decoder.SampleRate,
+                    Duration = decoder.Length > 0
+                        ? TimeSpan.FromSeconds((double)decoder.Length / (decoder.SampleRate * decoder.Channels))
+                        : TimeSpan.Zero
+                };
+            }
+        }
+
+        try
+        {
+            _data = Decode(decoder);
+            SampleRate = explicitFormat?.SampleRate ?? FormatInfo.SampleRate;
+            Length = _data.Length;
+        }
+        finally
+        {
+            decoder.Dispose();
+        }
+    }
+
     /// <inheritdoc />
     public int Position => _samplePosition;
 
     /// <inheritdoc />
-    public int Length { get; } // Length in samples
+    public int Length { get; private set; } // Length in samples
 
     /// <inheritdoc />
     public bool CanSeek => true;
 
     /// <inheritdoc />
     public SampleFormat SampleFormat { get; private set; }
-    
+
     /// <inheritdoc />
-    public int SampleRate { get; }
+    public int SampleRate { get; private set; }
 
     /// <inheritdoc />
     public bool IsDisposed { get; private set; }
-    
+
     /// <inheritdoc />
-    public SoundFormatInfo? FormatInfo { get; }
+    public SoundFormatInfo? FormatInfo { get; private set; }
 
     /// <inheritdoc />
     public event EventHandler<EventArgs>? EndOfStreamReached;
-    
+
     /// <inheritdoc />
     public event EventHandler<PositionChangedEventArgs>? PositionChanged;
 
     /// <inheritdoc />
     public int ReadBytes(Span<float> buffer)
     {
+        if (IsDisposed || _data is null) return 0;
+
         var samplesToRead = Math.Min(buffer.Length, _data.Length - _samplePosition);
         if (samplesToRead <= 0)
         {
             EndOfStreamReached?.Invoke(this, EventArgs.Empty);
             return 0;
         }
-        
+
         _data.AsSpan(_samplePosition, samplesToRead).CopyTo(buffer);
         _samplePosition += samplesToRead;
         PositionChanged?.Invoke(this, new PositionChangedEventArgs(_samplePosition));
@@ -168,6 +185,8 @@ public sealed class AssetDataProvider : ISoundDataProvider
     /// <inheritdoc />
     public void Seek(int sampleOffset)
     {
+        if (IsDisposed || _data is null) return;
+
         _samplePosition = Math.Clamp(sampleOffset, 0, _data.Length);
         PositionChanged?.Invoke(this, new PositionChangedEventArgs(_samplePosition));
     }
@@ -176,7 +195,7 @@ public sealed class AssetDataProvider : ISoundDataProvider
     {
         SampleFormat = decoder.SampleFormat;
         var length = decoder.Length > 0 || FormatInfo == null
-            ? decoder.Length 
+            ? decoder.Length
             : (int)(FormatInfo.Duration.TotalSeconds * FormatInfo.SampleRate * FormatInfo.ChannelCount);
 
         return length > 0 ? DecodeKnownLength(decoder, length) : DecodeUnknownLength(decoder);
@@ -199,8 +218,8 @@ public sealed class AssetDataProvider : ISoundDataProvider
         const int blockSize = 22050; // Approx 0.5s at 44.1kHz stereo
         var blocks = new List<float[]>();
         var totalSamples = 0;
-        
-        while(true)
+
+        while (true)
         {
             var block = new float[blockSize * decoder.Channels];
             var samplesRead = decoder.Decode(block);
@@ -229,5 +248,8 @@ public sealed class AssetDataProvider : ISoundDataProvider
     {
         if (IsDisposed) return;
         IsDisposed = true;
+        _data = null;
+        EndOfStreamReached = null;
+        PositionChanged = null;
     }
 }

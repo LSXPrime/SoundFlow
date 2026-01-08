@@ -23,6 +23,8 @@ public class AudioSegment : IDisposable
     private AudioSegmentSettings _settings;
     private Track? _parentTrack;
 
+    // WSOLA State
+    private WsolaConfig _timeStretchConfig;
     private WsolaTimeStretcher? _segmentWsolaStretcher;
     private float[] _wsolaFeedBuffer = [];
     private int _wsolaFeedBufferValidSamples;
@@ -132,6 +134,35 @@ public class AudioSegment : IDisposable
     }
 
     /// <summary>
+    /// Gets or sets the configuration for the time-stretching algorithm.
+    /// Changing this resets the internal processing state.
+    /// </summary>
+    public WsolaConfig TimeStretchConfig
+    {
+        get => _timeStretchConfig;
+        set
+        {
+            if (value == null) throw new ArgumentNullException(nameof(value));
+            // Check for value equality to avoid unnecessary resets
+            if (_timeStretchConfig.WindowSizeFrames == value.WindowSizeFrames &&
+                _timeStretchConfig.AnalysisHopFrames == value.AnalysisHopFrames &&
+                _timeStretchConfig.SearchRadiusFrames == value.SearchRadiusFrames)
+            {
+                return;
+            }
+
+            _timeStretchConfig = value;
+            
+            // Re-initialize buffers to accommodate potentially larger window sizes
+            InitializeWsolaBuffers();
+            
+            // Reconfigure or recreate the stretcher
+            FullResetState();
+            MarkDirty();
+        }
+    }
+
+    /// <summary>
     /// Gets or sets the parent track to which this segment is added.
     /// </summary>
     internal Track? ParentTrack
@@ -178,6 +209,9 @@ public class AudioSegment : IDisposable
         _ownsDataProvider = ownsDataProvider;
         _settings = settings ?? new AudioSegmentSettings();
         _settings.ParentSegment = this;
+        
+        // Default to Fast preset
+        _timeStretchConfig = WsolaConfig.FromPreset(WsolaPerformancePreset.Fast);
 
         // Validation for initial construction
         if (_sourceStartTime < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(sourceStartTime));
@@ -194,9 +228,20 @@ public class AudioSegment : IDisposable
     private void InitializeWsolaBuffers()
     {
         var channels = Format.Channels > 0 ? Format.Channels : 2;
-        const int baseBufferSizeFrames = WsolaTimeStretcher.DefaultWindowSizeFrames * 8;
-        _wsolaFeedBuffer = new float[baseBufferSizeFrames * channels];
-        _wsolaOutputBuffer = new float[baseBufferSizeFrames * channels * 3];
+        // Size buffers based on the current configuration to ensure they are large enough.
+        // x8 factor provides a safe margin for processing multiple hops.
+        var baseBufferSizeFrames = _timeStretchConfig.WindowSizeFrames * 8;
+        
+        var requiredSize = baseBufferSizeFrames * channels;
+        if (_wsolaFeedBuffer.Length < requiredSize || _wsolaFeedBuffer.Length > requiredSize * 2)
+        {
+            _wsolaFeedBuffer = new float[requiredSize];
+        }
+        
+        if (_wsolaOutputBuffer.Length < requiredSize * 3 || _wsolaOutputBuffer.Length > requiredSize * 6)
+        {
+            _wsolaOutputBuffer = new float[requiredSize * 3];
+        }
     }
 
 
@@ -230,11 +275,18 @@ public class AudioSegment : IDisposable
         var effectiveStretchFactor = Settings.TimeStretchFactor;
         if (Math.Abs(effectiveStretchFactor - 1.0f) > float.Epsilon && SourceDuration > TimeSpan.Zero)
         {
-            // Create or reconfigure WSOLA if time stretching is enabled.
-            _segmentWsolaStretcher ??= new WsolaTimeStretcher(channels, 1.0f / effectiveStretchFactor);
-            _segmentWsolaStretcher.SetChannels(channels);
-            _segmentWsolaStretcher.SetSpeed(1.0f / effectiveStretchFactor);
-            _segmentWsolaStretcher.Reset();
+            if (_segmentWsolaStretcher == null)
+            {
+                _segmentWsolaStretcher = new WsolaTimeStretcher(channels, 1.0f / effectiveStretchFactor, _timeStretchConfig);
+            }
+            else
+            {
+                // Update configuration and reset
+                _segmentWsolaStretcher.SetChannels(channels);
+                _segmentWsolaStretcher.Configure(_timeStretchConfig);
+                _segmentWsolaStretcher.SetSpeed(1.0f / effectiveStretchFactor);
+                _segmentWsolaStretcher.Reset();
+            }
         }
         else
         {
@@ -327,9 +379,12 @@ public class AudioSegment : IDisposable
     /// <returns>A new <see cref="AudioSegment"/> object with copied properties.</returns>
     public AudioSegment Clone(TimeSpan? newTimelineStartTime = null)
     {
-        return new AudioSegment(Format, SourceDataProvider,
+        var clone = new AudioSegment(Format, SourceDataProvider,
             SourceStartTime, SourceDuration, newTimelineStartTime ?? TimelineStartTime, $"{Name} (Clone)",
             Settings.Clone());
+        
+        clone.TimeStretchConfig = this.TimeStretchConfig;
+        return clone;
     }
 
     /// <summary>
@@ -677,7 +732,7 @@ public class AudioSegment : IDisposable
         var initialWsolaOutputCountThisCall = _wsolaOutputBufferValidSamples;
         
         // Loop until enough output is generated or source runs out.
-        while (_wsolaOutputBufferValidSamples - _wsolaOutputBufferReadOffset < WsolaTimeStretcher.DefaultWindowSizeFrames * channels)
+        while (_wsolaOutputBufferValidSamples - _wsolaOutputBufferReadOffset < _timeStretchConfig.WindowSizeFrames * channels)
         {
             var currentSourcePassExhaustedForWsolaFeed = _sourceSamplesFedToWsolaThisSourcePass >= sourceSamplesInOneSourcePass;
 
@@ -763,7 +818,7 @@ public class AudioSegment : IDisposable
 
             // Break if no progress is made or enough output is generated.
             if (samplesWrittenToWsolaOut == 0 && samplesConsumedFromFeed == 0) break;
-            if (_wsolaOutputBufferValidSamples - _wsolaOutputBufferReadOffset >= WsolaTimeStretcher.DefaultWindowSizeFrames * channels) break;
+            if (_wsolaOutputBufferValidSamples - _wsolaOutputBufferReadOffset >= _timeStretchConfig.WindowSizeFrames * channels) break;
         }
 
         // Return true if the output buffer grew during this call.

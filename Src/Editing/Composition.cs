@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using SoundFlow.Abstracts;
 using SoundFlow.Editing.Mapping;
 using SoundFlow.Interfaces;
@@ -12,6 +13,7 @@ namespace SoundFlow.Editing;
 /// Represents a complete audio composition, acting as the top-level container for multiple tracks.
 /// It serves as a façade, providing access to its data model and specialized services for rendering, editing, and recording.
 /// </summary>
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicMethods)]
 public sealed class Composition : ISequencerContext, IDisposable, IMidiMappable
 {
     private readonly Dictionary<Guid, IMidiMappable> _objectRegistry = new();

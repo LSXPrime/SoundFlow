@@ -1,4 +1,5 @@
 ﻿
+using SoundFlow.Enums;
 using SoundFlow.Modifiers;
 
 namespace SoundFlow.Samples.SimplePlayer;

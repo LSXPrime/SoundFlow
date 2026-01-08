@@ -5,9 +5,11 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <IsAotCompatible>true</IsAotCompatible>
+        <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
         <Title>SoundFlow FFmpeg Codecs</Title>
         <PackageId>SoundFlow.Codecs.FFMpeg</PackageId>
-        <Version>1.3.0</Version>
+        <Version>1.4.0</Version>
         <Description>Provides FFmpeg-based audio codecs (MP3, AAC, OGG, Opus, etc.) for the SoundFlow audio engine.</Description>
         <PackageTags>soundflow;audio;codec;ffmpeg;mp3;aac;ogg;opus</PackageTags>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -33,6 +35,10 @@
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
             <Pack>true</Pack>
         </None>
+        <None Include="..\..\SOUNDFLOW-THIRD-PARTY-NOTICES.txt"
+              Pack="true"
+              PackagePath="\"
+              CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
     <ItemGroup>

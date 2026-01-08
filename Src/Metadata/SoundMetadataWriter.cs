@@ -52,7 +52,7 @@ public static class SoundMetadataWriter
         catch (Exception ex)
         {
             // Catch unexpected system-level exceptions during file operations.
-            return new IOError("An unexpected error occurred during the file write operation.", ex);
+            return new IoError("File write operation.", ex);
         }
         finally
         {
@@ -96,7 +96,7 @@ public static class SoundMetadataWriter
         }
         catch(Exception ex)
         {
-            return new IOError("An unexpected error occurred during the file write operation.", ex);
+            return new IoError("File write operation.", ex);
         }
         finally
         {
@@ -149,7 +149,7 @@ public static class SoundMetadataWriter
         }
         catch (IOException ex)
         {
-            return new IOError("An I/O error occurred while identifying the file format.", ex);
+            return new IoError("Identifying the file format.", ex);
         }
     }
 }

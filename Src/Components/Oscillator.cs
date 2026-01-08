@@ -29,7 +29,8 @@ public class Oscillator : SoundComponent
         Sawtooth,
 
         /// <summary>
-        /// A triangle wave, containing only odd harmonics. Note: This implementation is not band-limited, but aliasing is less pronounced than with square or saw waves.
+        /// A triangle wave, containing only odd harmonics.
+        /// Note: This implementation is not band-limited, but aliasing is less pronounced than with square or saw waves.
         /// </summary>
         Triangle,
 

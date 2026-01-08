@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using SoundFlow.Interfaces;
 
 namespace SoundFlow.Editing;
@@ -7,6 +8,7 @@ namespace SoundFlow.Editing;
 /// Represents a single audio track within a composition, containing a collection of audio segments
 /// and applying track-level settings like volume, pan, mute, and solo.
 /// </summary>
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicMethods)]
 public class Track : IMidiMappable
 {
     private string _name;

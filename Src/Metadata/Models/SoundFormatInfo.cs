@@ -29,7 +29,7 @@ public enum BitrateMode
 /// <summary>
 ///     Holds the format, tag, and cue information for an audio file.
 /// </summary>
-public class SoundFormatInfo
+public record SoundFormatInfo
 {
     /// <summary>
     ///     The common name of the audio format (e.g., "WAV", "MP3").

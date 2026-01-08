@@ -1,6 +1,7 @@
 using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Components;
+using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using SoundFlow.Modifiers;
 using SoundFlow.Providers;
@@ -20,8 +21,7 @@ internal static class ComponentTests
         {
             Console.WriteLine("SoundFlow Component and Modifier Examples");
             Console.WriteLine($"Using Audio Backend: {Engine.GetType().Name}");
-
-            /*
+            
             // Component Examples:
             Console.WriteLine("\n--- Component Examples ---");
             TestOscillator();
@@ -58,9 +58,9 @@ internal static class ComponentTests
             TestStreamDataProvider();
             TestRawDataProvider();
             TestQueueDataProvider();
-            */
+            
             TestNetworkDataProvider().GetAwaiter().GetResult();
-            // TestMicrophoneDataProvider();
+            TestMicrophoneDataProvider();
 
             Console.WriteLine("\nAll Tests Finished. Press any key to exit.");
             Console.ReadKey();
@@ -76,8 +76,10 @@ internal static class ComponentTests
     private static void TestOscillator()
     {
         Console.WriteLine("\n- Testing Oscillator Component -");
-        using var oscillator = new Oscillator(Engine, Format)
-            { Frequency = 440f, Amplitude = 0.5f, Type = Oscillator.WaveformType.Sine };
+        using var oscillator = new Oscillator(Engine, Format);
+        oscillator.Frequency = 440f;
+        oscillator.Amplitude = 0.5f;
+        oscillator.Type = Oscillator.WaveformType.Sine;
         PlayComponentForDuration(oscillator, 3);
     }
 
@@ -134,7 +136,7 @@ internal static class ComponentTests
             { Frequency = 440f, Amplitude = 0.5f, Type = Oscillator.WaveformType.Square };
         var filter = new Filter(Format)
         {
-            Type = Filter.FilterType.LowPass,
+            Type = FilterType.LowPass,
             CutoffFrequency = 1000f,
             Resonance = 0.8f
         };

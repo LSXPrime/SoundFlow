@@ -1,4 +1,4 @@
-[submodule "Extensions/SoundFlow.Extensions.WebRtc.Apm/Native"]
+[submodule "Native/webrtc-audio-processing"]
 	path = Native/webrtc-audio-processing
 	url = https://github.com/LSXPrime/webrtc-audio-processing
 [submodule "Native/miniaudio-backend/miniaudio"]

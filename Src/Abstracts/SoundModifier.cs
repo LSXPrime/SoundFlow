@@ -1,7 +1,7 @@
+using System.Diagnostics.CodeAnalysis;
 using SoundFlow.Interfaces;
 using SoundFlow.Midi.Interfaces;
 using SoundFlow.Midi.Structs;
-using SoundFlow.Structs;
 
 namespace SoundFlow.Abstracts;
 
@@ -9,6 +9,7 @@ namespace SoundFlow.Abstracts;
 /// An abstract representation of a sound modifier.
 /// Implementations of this class alter audio data to apply various effects.
 /// </summary>
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicMethods)]
 public abstract class SoundModifier : IMidiMappable, IMidiControllable
 {
     /// <inheritdoc />

@@ -40,8 +40,10 @@ internal sealed class FFmpegDecoder : ISoundDecoder
 
         if (result != FFmpegResult.Success)
         {
+            var logMessage = $"Failed to initialize FFmpeg decoder. Result: {result}";
+            Log.Error(logMessage);
             _handle.Dispose();
-            throw new FFmpegException(result, $"Failed to initialize FFmpeg decoder. Result: {result}");
+            throw new FFmpegException(result, logMessage);
         }
 
         SampleFormat = targetFormat.Format = nativeFormat;
@@ -51,8 +53,10 @@ internal sealed class FFmpegDecoder : ISoundDecoder
         var lengthInFrames = FFmpeg.GetLengthInPcmFrames(_handle);
         if (lengthInFrames < 0)
         {
+            const string logMessage = "Failed to get stream length, the decoder handle may be invalid.";
+            Log.Error(logMessage);
             _handle.Dispose();
-            throw new InvalidOperationException("Failed to get stream length; the decoder handle may be invalid.");
+            throw new InvalidOperationException(logMessage);
         }
         Length = (int)(lengthInFrames * Channels);
     }
@@ -120,7 +124,7 @@ internal sealed class FFmpegDecoder : ISoundDecoder
         }
         catch
         {
-            Log.Critical("[FFmpegDecoder] Failed to read from stream.");
+            Log.Critical("Failed to read from stream.");
             // Signal error/EOF to FFmpeg by returning 0. FFmpeg will handle this gracefully as AVERROR_EOF.
             return 0;
         }
@@ -135,7 +139,7 @@ internal sealed class FFmpegDecoder : ISoundDecoder
         }
         catch
         {
-            Log.Critical("[FFmpegDecoder] Failed to seek stream.");
+            Log.Critical("Failed to seek stream.");
             return -1;
         }
     }

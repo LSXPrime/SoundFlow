@@ -37,7 +37,7 @@ public class WaveformVisualizer : IVisualizer
     public Vector2 Size => new(800, 200);
 
     /// <inheritdoc/>
-    public void ProcessOnAudioData(Span<float> audioData)
+    public void ProcessOnAudioData(ReadOnlySpan<float> audioData)
     {
         Waveform.Clear();
         Waveform.AddRange(audioData.ToArray());

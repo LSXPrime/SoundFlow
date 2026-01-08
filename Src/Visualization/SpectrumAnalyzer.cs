@@ -42,10 +42,10 @@ namespace SoundFlow.Visualization
         /// <summary>
         /// Gets the spectrum data.
         /// </summary>
-        public ReadOnlySpan<float> SpectrumData => _spectrumData;
+        public float[] SpectrumData => _spectrumData;
 
         /// <inheritdoc/>
-        protected override void Analyze(Span<float> buffer, int channels)
+        protected override void Analyze(ReadOnlySpan<float> buffer, int channels)
         {
             // Apply window function and copy to FFT buffer
             var numSamples = Math.Min(buffer.Length, _fftSize);

@@ -21,12 +21,12 @@ By registering this extension with the SoundFlow engine, you can seamlessly load
 This extension provides a high-performance and memory-efficient bridge to FFmpeg's audio capabilities:
 
 *   **Broad Codec Support:** Adds support for dozens of popular audio formats, including:
-    *   **Lossy:** MP3, AAC, Ogg Vorbis, Opus, WMA, AC3
+    *   **Lossy:** MP3 (encoded via LAME), AAC, Ogg Vorbis, Opus, WMA, AC3
     *   **Lossless:** FLAC, ALAC (Apple Lossless), APE, WavPack (WV), TTA
     *   **And many more container and raw formats.**
 *   **Seamless Integration:** Implements a high-priority `ICodecFactory`, allowing SoundFlow to automatically use FFmpeg for supported formats with no changes to your existing playback or recording code.
 *   **High Performance & Efficiency:** Works directly with streams using a callback-based native wrapper. This avoids loading entire audio files into memory, making it ideal for large files and network streams.
-*   **Cross-Platform:** Includes pre-compiled native binaries for Windows, macOS, and Linux (x64, x86, ARM64), ensuring it works wherever SoundFlow runs.
+*   **Cross-Platform:** Includes pre-compiled native binaries for Windows, macOS, Linux, Android, iOS and FreeBSD (x64, x86, ARM64), ensuring it works wherever SoundFlow runs.
 *   **Automatic Format Conversion:** The native wrapper intelligently uses FFmpeg's `swresample` library to automatically convert audio from its source format to the format required by your application (e.g., 32-bit float), simplifying your audio pipeline.
 
 ## Getting Started
@@ -93,18 +93,18 @@ device.Stop();
 
 ## Technical Details
 
-The native library included in this package is a custom-built, lightweight version of FFmpeg. To minimize binary size, it is configured with a "disable-all, enable-specific" strategy. The build includes a curated set of audio-only components and excludes all video processing, hardware acceleration, networking protocols (except `file` and `pipe`), and other non-essential features.
+The native library included in this package is a custom-built, lightweight wrapper around FFmpeg and the LAME MP3 encoder. To minimize binary size, it is configured with a "disable-all, enable-specific" strategy. The build includes a curated set of audio-only components and excludes all video processing, hardware acceleration, networking protocols (except `file` and `pipe`), and other non-essential features.
 
 This results in a small, focused, and highly efficient native dependency tailored specifically for SoundFlow's audio processing needs.
 
 ## Origin and Licensing
 
-This `SoundFlow.Codecs.FFMpeg` package consists of C# wrapper code and a custom native library that statically links against FFmpeg libraries.
+This `SoundFlow.Codecs.FFMpeg` package consists of C# wrapper code and a custom native library that statically links against FFmpeg and LAME libraries.
 
 *   The C# code within this `SoundFlow.Codecs.FFMpeg` package is licensed under the **MIT License**.
-*   The included FFmpeg build is configured to be compatible with **LGPL v2.1 or later**. It is compiled with `--disable-gpl` and `--disable-nonfree` flags. Your use of this package must comply with the terms of the LGPL. This generally means that if you dynamically link to this library, you can use it in proprietary software, but if you modify the FFmpeg source code itself, you must release those changes.
+*   The included native library builds upon FFmpeg and LAME, both of which are licensed under the **LGPL v2.1 or later**. The FFmpeg build is configured with `--disable-gpl` and `--disable-nonfree` flags. Your use of this package must comply with the terms of the LGPL. This generally means that if you dynamically link to this library, you can use it in proprietary software, but if you modify the FFmpeg or LAME source code itself, you must release those changes.
 
-**Users of this package must comply with the terms of BOTH the MIT License (for the C# wrapper) and the LGPL (for the underlying FFmpeg components).** For detailed information, please consult the official [FFmpeg Licensing Page](https://ffmpeg.org/legal.html).
+**Users of this package must comply with the terms of BOTH the MIT License (for the C# wrapper) and the LGPL (for the underlying FFmpeg and LAME components).** For detailed information, please consult the official [FFmpeg Licensing Page](https://ffmpeg.org/legal.html) and the [LAME Project Website](https://lame.sourceforge.io/).
 
 ## Contributing
 
@@ -112,7 +112,7 @@ Contributions to `SoundFlow.Codecs.FFMpeg` are welcome! Please open issues or su
 
 ## Acknowledgments
 
-This package would not be possible without the incredible work of the **FFmpeg project team and its contributors**.
+This package would not be possible without the incredible work of the **FFmpeg project team and its contributors**. Special thanks to the **LAME project** for the high-quality MP3 encoder.
 
 ## License
 

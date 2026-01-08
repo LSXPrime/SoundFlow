@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using SoundFlow.Abstracts;
 using SoundFlow.Interfaces;
 using SoundFlow.Midi.Abstracts;
@@ -8,6 +9,7 @@ namespace SoundFlow.Editing;
 /// Represents the configurable settings for a <see cref="Track"/> or <see cref="MidiTrack"/>,
 /// controlling its overall playback characteristics such as volume, pan, and mute/solo states.
 /// </summary>
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicMethods)]
 public class TrackSettings : IMidiMappable
 {
     private float _volume = 1.0f;

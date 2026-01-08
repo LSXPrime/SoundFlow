@@ -1,5 +1,7 @@
 ﻿using SoundFlow.Abstracts;
+using SoundFlow.Enums;
 using SoundFlow.Structs;
+using SoundFlow.Utils;
 
 namespace SoundFlow.Modifiers;
 
@@ -16,6 +18,7 @@ public sealed class ParametricEqualizer : SoundModifier
     /// </summary>
     public List<EqualizerBand> Bands { get; private set; } = [];
 
+    // Dictionary mapping Channel Index -> List of BiquadFilters
     private readonly Dictionary<int, List<BiquadFilter>> _filtersPerChannel = [];
     private readonly AudioFormat _format;
 
@@ -25,7 +28,7 @@ public sealed class ParametricEqualizer : SoundModifier
     /// <param name="format">The audio format to process.</param>
     public ParametricEqualizer(AudioFormat format)
     {
-        _format = format; // Store the format
+        _format = format;
     }
 
     /// <summary>
@@ -36,11 +39,11 @@ public sealed class ParametricEqualizer : SoundModifier
         _filtersPerChannel.Clear();
         for (var channel = 0; channel < _format.Channels; channel++)
         {
-            List<BiquadFilter> filters = [];
+            var filters = new List<BiquadFilter>();
             foreach (var band in Bands)
             {
                 var filter = new BiquadFilter();
-                filter.UpdateCoefficients(band, _format.SampleRate);
+                filter.Update(band.Type, _format.SampleRate, band.Frequency, band.Q, band.GainDb, band.S);
                 filters.Add(filter);
             }
 
@@ -61,25 +64,25 @@ public sealed class ParametricEqualizer : SoundModifier
     /// <inheritdoc/>
     public override float ProcessSample(float sample, int channel)
     {
-        if (!_filtersPerChannel.TryGetValue(channel, out var value))
+        if (!_filtersPerChannel.TryGetValue(channel, out var channelFilters))
         {
-            // Initialize filters for this channel if not already done
+            // Initialize filters for this channel if not already done (lazy init)
             var filters = new List<BiquadFilter>();
             foreach (var band in Bands)
             {
                 var filter = new BiquadFilter();
-                filter.UpdateCoefficients(band, _format.SampleRate);
+                filter.Update(band.Type, _format.SampleRate, band.Frequency, band.Q, band.GainDb, band.S);
                 filters.Add(filter);
             }
 
-            value = filters;
-            _filtersPerChannel[channel] = value;
+            channelFilters = filters;
+            _filtersPerChannel[channel] = channelFilters;
         }
 
         var processedSample = sample;
-        foreach (var filter in value)
+        foreach (var filter in channelFilters)
         {
-            processedSample = filter.ProcessSample(processedSample);
+            processedSample = filter.Process(processedSample);
         }
 
         return processedSample;
@@ -117,52 +120,6 @@ public sealed class ParametricEqualizer : SoundModifier
 }
 
 /// <summary>
-/// Types of filters supported by the Parametric Equalizer.
-/// </summary>
-public enum FilterType
-{
-    /// <summary>
-    /// A peaking equalizer boosts or cuts a specific frequency range.
-    /// </summary>
-    Peaking,
-
-    /// <summary>
-    /// A low-shelf equalizer boosts or cuts all frequencies below a specific frequency.
-    /// </summary>
-    LowShelf,
-
-    /// <summary>
-    /// A high-shelf equalizer boosts or cuts all frequencies above a specific frequency.
-    /// </summary>
-    HighShelf,
-
-    /// <summary>
-    /// A low-pass filter removes high frequencies from the audio signal.
-    /// </summary>
-    LowPass,
-
-    /// <summary>
-    /// A high-pass filter removes low frequencies from the audio signal.
-    /// </summary>
-    HighPass,
-
-    /// <summary>
-    /// A band-pass filter removes all frequencies outside a specific frequency range.
-    /// </summary>
-    BandPass,
-
-    /// <summary>
-    /// A notch filter removes a specific frequency range from the audio signal.
-    /// </summary>
-    Notch,
-
-    /// <summary>
-    /// An all-pass filter changes the phase of the audio signal without affecting its frequency response.
-    /// </summary>
-    AllPass
-}
-
-/// <summary>
 /// Represents an EQ band with specific parameters.
 /// </summary>
 /// <param name="type">The type of filter to apply.</param>
@@ -196,143 +153,4 @@ public class EqualizerBand(FilterType type, float frequency, float gainDb, float
     /// The type of filter to apply.
     /// </summary>
     public FilterType Type { get; set; } = type;
-}
-
-/// <summary>
-/// A biquad filter used to process audio samples.
-/// </summary>
-public class BiquadFilter
-{
-    private float _a0, _a1, _a2, _b0, _b1, _b2;
-    private float _x1, _x2, _y1, _y2;
-
-    /// <summary>
-    /// Updates the filter coefficients based on the specified EQ band parameters.
-    /// </summary>
-    /// <param name="band">The EQ band containing filter parameters.</param>
-    /// <param name="sampleRate">The sample rate of the audio data.</param>
-    public void UpdateCoefficients(EqualizerBand band, float sampleRate)
-    {
-        float a;
-        var omega = 2 * (float)Math.PI * band.Frequency / sampleRate;
-        var sinOmega = (float)Math.Sin(omega);
-        var cosOmega = (float)Math.Cos(omega);
-        float alpha;
-
-        switch (band.Type)
-        {
-            case FilterType.Peaking:
-                a = (float)Math.Pow(10, band.GainDb / 40);
-                alpha = sinOmega / (2 * band.Q);
-
-                _b0 = 1 + alpha * a;
-                _b1 = -2 * cosOmega;
-                _b2 = 1 - alpha * a;
-                _a0 = 1 + alpha / a;
-                _a1 = -2 * cosOmega;
-                _a2 = 1 - alpha / a;
-                break;
-            case FilterType.LowShelf:
-                a = (float)Math.Pow(10, band.GainDb / 40);
-                var sqrtA = (float)Math.Sqrt(a);
-                alpha = sinOmega / 2 * (float)Math.Sqrt((a + 1 / a) * (1 / band.S - 1) + 2);
-
-                _b0 = a * ((a + 1) - (a - 1) * cosOmega + 2 * sqrtA * alpha);
-                _b1 = 2 * a * ((a - 1) - (a + 1) * cosOmega);
-                _b2 = a * ((a + 1) - (a - 1) * cosOmega - 2 * sqrtA * alpha);
-                _a0 = (a + 1) + (a - 1) * cosOmega + 2 * sqrtA * alpha;
-                _a1 = -2 * ((a - 1) + (a + 1) * cosOmega);
-                _a2 = (a + 1) + (a - 1) * cosOmega - 2 * sqrtA * alpha;
-                break;
-            case FilterType.HighShelf:
-                a = (float)Math.Pow(10, band.GainDb / 40);
-                sqrtA = (float)Math.Sqrt(a);
-                alpha = sinOmega / 2 * (float)Math.Sqrt((a + 1 / a) * (1 / band.S - 1) + 2);
-
-                _b0 = a * ((a + 1) + (a - 1) * cosOmega + 2 * sqrtA * alpha);
-                _b1 = -2 * a * ((a - 1) + (a + 1) * cosOmega);
-                _b2 = a * ((a + 1) + (a - 1) * cosOmega - 2 * sqrtA * alpha);
-                _a0 = (a + 1) - (a - 1) * cosOmega + 2 * sqrtA * alpha;
-                _a1 = 2 * ((a - 1) - (a + 1) * cosOmega);
-                _a2 = (a + 1) - (a - 1) * cosOmega - 2 * sqrtA * alpha;
-                break;
-            case FilterType.LowPass:
-                alpha = sinOmega / (2 * band.Q);
-
-                _b0 = (1 - cosOmega) / 2;
-                _b1 = 1 - cosOmega;
-                _b2 = (1 - cosOmega) / 2;
-                _a0 = 1 + alpha;
-                _a1 = -2 * cosOmega;
-                _a2 = 1 - alpha;
-                break;
-            case FilterType.HighPass:
-                alpha = sinOmega / (2 * band.Q);
-
-                _b0 = (1 + cosOmega) / 2;
-                _b1 = -(1 + cosOmega);
-                _b2 = (1 + cosOmega) / 2;
-                _a0 = 1 + alpha;
-                _a1 = -2 * cosOmega;
-                _a2 = 1 - alpha;
-                break;
-            case FilterType.BandPass:
-                alpha = sinOmega / (2 * band.Q);
-
-                _b0 = alpha;
-                _b1 = 0;
-                _b2 = -alpha;
-                _a0 = 1 + alpha;
-                _a1 = -2 * cosOmega;
-                _a2 = 1 - alpha;
-                break;
-            case FilterType.Notch:
-                alpha = sinOmega / (2 * band.Q);
-
-                _b0 = 1;
-                _b1 = -2 * cosOmega;
-                _b2 = 1;
-                _a0 = 1 + alpha;
-                _a1 = -2 * cosOmega;
-                _a2 = 1 - alpha;
-                break;
-            case FilterType.AllPass:
-                alpha = sinOmega / (2 * band.Q);
-
-                _b0 = 1 - alpha;
-                _b1 = -2 * cosOmega;
-                _b2 = 1 + alpha;
-                _a0 = 1 + alpha;
-                _a1 = -2 * cosOmega;
-                _a2 = 1 - alpha;
-                break;
-            default:
-                throw new NotSupportedException("Filter type not supported or implemented");
-        }
-
-        // Normalize the coefficients
-        _b0 /= _a0;
-        _b1 /= _a0;
-        _b2 /= _a0;
-        _a1 /= _a0;
-        _a2 /= _a0;
-    }
-
-    /// <summary>
-    /// Processes a single audio sample through the biquad filter.
-    /// </summary>
-    /// <param name="x">The input sample.</param>
-    /// <returns>The filtered output sample.</returns>
-    public float ProcessSample(float x)
-    {
-        var y = _b0 * x + _b1 * _x1 + _b2 * _x2 - _a1 * _y1 - _a2 * _y2;
-
-        // Shift the data
-        _x2 = _x1;
-        _x1 = x;
-        _y2 = _y1;
-        _y1 = y;
-
-        return y;
-    }
 }

@@ -4,6 +4,8 @@
 #include <libavformat/avformat.h>
 #include <libavutil/opt.h>
 #include <libavutil/channel_layout.h>
+#include <libavutil/audio_fifo.h>
+#include <libavutil/mathematics.h>
 #include <libswresample/swresample.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,13 +37,16 @@ struct SF_Encoder {
     AVStream* stream;
     AVPacket* packet;
     AVFrame* frame;
+    AVFrame* temp_frame;
     SwrContext* swr_ctx;
     AVIOContext* avio_ctx;
     uint8_t* io_buffer;
+    AVAudioFifo* fifo;
     sf_write_callback onWrite;
     void* pUserData;
     int64_t next_pts;
     SFSampleFormat input_format;
+    uint32_t input_sample_rate;
 };
 
 // Helper Functions
@@ -206,6 +211,23 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
     int draining = 0;
 
     while (frames_read < frameCount) {
+        // Check if the resampler has data buffered from previous calls.
+        if (swr_get_out_samples(decoder->swr_ctx, 0) > 0) {
+            // Call swr_convert with NULL input to flush/read buffered data
+            int out_samples = swr_convert(decoder->swr_ctx,
+                                         out_ptr,
+                                         (int)(frameCount - frames_read),
+                                         NULL, 0);
+
+            if (out_samples > 0) {
+                out_ptr[0] += out_samples * decoder->target_channels * decoder->target_bytes_per_sample;
+                frames_read += out_samples;
+
+                // If we filled the user buffer, we are done for this call.
+                if (frames_read >= frameCount) break;
+            }
+        }
+
         // Try to receive a decoded frame
         int ret = avcodec_receive_frame(decoder->codec_ctx, decoder->frame);
 
@@ -237,7 +259,7 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                     frames_read += flushed_samples;
                 }
             } while (flushed_samples > 0 && frames_read < frameCount);
-            
+
             // End of stream is not an error, break loop and return success.
             break;
         }
@@ -364,6 +386,7 @@ static int encode_and_write(SF_Encoder* encoder, AVFrame* frame) {
 
 SF_FFMPEG_API SF_Result sf_encoder_init(SF_Encoder* encoder, const char* format_name, sf_write_callback onWrite, void* pUserData, SFSampleFormat sampleFormat, uint32_t channels, uint32_t sampleRate) {
     if (!encoder) return SF_RESULT_ERROR_INVALID_ARGS;
+    if (channels == 0 || sampleRate == 0) return SF_RESULT_ERROR_INVALID_ARGS;
 
     // Set FFmpeg to only log errors
     av_log_set_level(AV_LOG_ERROR);
@@ -372,6 +395,7 @@ SF_FFMPEG_API SF_Result sf_encoder_init(SF_Encoder* encoder, const char* format_
     encoder->pUserData = pUserData;
     encoder->next_pts = 0;
     encoder->input_format = sampleFormat;
+    encoder->input_sample_rate = sampleRate;
 
     const AVOutputFormat* out_fmt = av_guess_format(format_name, NULL, NULL);
     if (!out_fmt) return SF_RESULT_ENCODER_ERROR_FORMAT_NOT_FOUND;
@@ -387,9 +411,18 @@ SF_FFMPEG_API SF_Result sf_encoder_init(SF_Encoder* encoder, const char* format_
     encoder->codec_ctx = avcodec_alloc_context3(codec);
     if (!encoder->codec_ctx) return SF_RESULT_ENCODER_ERROR_CODEC_CONTEXT_ALLOC;
 
+    // Enable experimental codecs (like native Opus) if necessary
+    encoder->codec_ctx->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL;
+
     AVChannelLayout ch_layout;
     av_channel_layout_default(&ch_layout, channels);
-    av_channel_layout_copy(&encoder->codec_ctx->ch_layout, &ch_layout);
+    // Copy the layout to the context. 
+    if (av_channel_layout_copy(&encoder->codec_ctx->ch_layout, &ch_layout) < 0) {
+        av_channel_layout_uninit(&ch_layout);
+        return SF_RESULT_ENCODER_ERROR_CODEC_CONTEXT_ALLOC;
+    }
+    av_channel_layout_uninit(&ch_layout);
+
     encoder->codec_ctx->sample_rate = sampleRate;
     encoder->codec_ctx->time_base = (AVRational){1, sampleRate};
 
@@ -429,39 +462,117 @@ SF_FFMPEG_API SF_Result sf_encoder_init(SF_Encoder* encoder, const char* format_
 
     encoder->packet = av_packet_alloc();
     encoder->frame = av_frame_alloc();
-    if (!encoder->packet || !encoder->frame) return SF_RESULT_ENCODER_ERROR_PACKET_FRAME_ALLOC;
+    encoder->temp_frame = av_frame_alloc(); // Allocate reusable temp frame
+
+    encoder->fifo = av_audio_fifo_alloc(encoder->codec_ctx->sample_fmt, encoder->codec_ctx->ch_layout.nb_channels, 1024);
+
+    if (!encoder->packet || !encoder->frame || !encoder->temp_frame || !encoder->fifo) return SF_RESULT_ENCODER_ERROR_PACKET_FRAME_ALLOC;
 
     return SF_RESULT_SUCCESS;
 }
 
 SF_FFMPEG_API SF_Result sf_encoder_write_pcm_frames(SF_Encoder* encoder, void* pFramesIn, int64_t frameCount, int64_t* out_frames_written) {
-    if (!encoder || !pFramesIn || !out_frames_written || frameCount <= 0) return SF_RESULT_ERROR_INVALID_ARGS;
+    if (!encoder || !pFramesIn || !out_frames_written) return SF_RESULT_ERROR_INVALID_ARGS;
+    if (frameCount <= 0) {
+        *out_frames_written = 0;
+        return SF_RESULT_SUCCESS;
+    }
 
     *out_frames_written = 0;
-    AVFrame* resampled_frame = av_frame_alloc();
-    resampled_frame->format = encoder->codec_ctx->sample_fmt;
-    av_channel_layout_copy(&resampled_frame->ch_layout, &encoder->codec_ctx->ch_layout);
-    resampled_frame->sample_rate = encoder->codec_ctx->sample_rate;
-    resampled_frame->nb_samples = (int)frameCount;
-    if (av_frame_get_buffer(resampled_frame, 0) < 0) {
-        av_frame_free(&resampled_frame);
-        return SF_RESULT_ERROR_ALLOCATION_FAILED;
+
+    // 1. Resample Input Data
+    // Use input_sample_rate to calculate correct delay and output count logic
+    int64_t delay = swr_get_delay(encoder->swr_ctx, encoder->input_sample_rate);
+    int64_t max_out_samples_64 = av_rescale_rnd(delay + frameCount,
+                                                encoder->codec_ctx->sample_rate,
+                                                encoder->input_sample_rate,
+                                                AV_ROUND_UP);
+
+    if (max_out_samples_64 > INT_MAX || max_out_samples_64 <= 0) {
+         return SF_RESULT_ERROR_INVALID_ARGS; // Too many samples
+    }
+    int max_out_samples = (int)max_out_samples_64;
+    
+    // Reset and prepare temp_frame
+    av_frame_unref(encoder->temp_frame);
+    
+    encoder->temp_frame->format = encoder->codec_ctx->sample_fmt;
+    // Copy layout from codec context (deep copy)
+    if (av_channel_layout_copy(&encoder->temp_frame->ch_layout, &encoder->codec_ctx->ch_layout) < 0) {
+        return SF_RESULT_ENCODER_ERROR_ENCODING_FAILED;
+    }
+    
+    encoder->temp_frame->sample_rate = encoder->codec_ctx->sample_rate;
+    encoder->temp_frame->nb_samples = max_out_samples;
+    
+    int ret = av_frame_get_buffer(encoder->temp_frame, 0);
+    if (ret < 0) {
+        if (ret == AVERROR(ENOMEM)) return SF_RESULT_ERROR_ALLOCATION_FAILED;
+        return SF_RESULT_ENCODER_ERROR_RESAMPLER_INIT_FAILED; 
     }
 
     const uint8_t* pIn[] = { (const uint8_t*)pFramesIn };
-    swr_convert(encoder->swr_ctx, resampled_frame->data, resampled_frame->nb_samples, pIn, (int)frameCount);
-
-    resampled_frame->pts = encoder->next_pts;
-    encoder->next_pts += resampled_frame->nb_samples;
+    int converted_samples = swr_convert(encoder->swr_ctx, encoder->temp_frame->data, encoder->temp_frame->nb_samples, pIn, (int)frameCount);
     
-    int ret = encode_and_write(encoder, resampled_frame);
-    av_frame_free(&resampled_frame);
+    if (converted_samples < 0) {
+         return SF_RESULT_ENCODER_ERROR_RESAMPLER_INIT_FAILED; 
+    }
 
-    if (ret < 0) {
-        if (ret == AVERROR(EIO)) {
-            return SF_RESULT_ENCODER_ERROR_WRITE_FAILED;
-        }
+    // 2. Add resampled data to FIFO
+    if (av_audio_fifo_realloc(encoder->fifo, av_audio_fifo_size(encoder->fifo) + converted_samples) < 0) {
+        return SF_RESULT_ERROR_ALLOCATION_FAILED;
+    }
+    
+    if (av_audio_fifo_write(encoder->fifo, (void**)encoder->temp_frame->data, converted_samples) < converted_samples) {
         return SF_RESULT_ENCODER_ERROR_ENCODING_FAILED;
+    }
+    
+    // We can unref temp_frame here to free the large buffer used for resampling
+    av_frame_unref(encoder->temp_frame);
+
+    // 3. Encode data from FIFO in fixed-size chunks
+    int frame_size = encoder->codec_ctx->frame_size;
+    
+    // If frame_size is 0 (e.g. PCM), the encoder accepts variable sizes, so we process everything in FIFO.
+    // If frame_size is > 0 (e.g. MP3, AAC), we must feed exactly frame_size samples.
+    
+    while (av_audio_fifo_size(encoder->fifo) >= frame_size || (frame_size == 0 && av_audio_fifo_size(encoder->fifo) > 0)) {
+        // Determine how many samples to read
+        int to_read = (frame_size > 0) ? frame_size : av_audio_fifo_size(encoder->fifo);
+        if (to_read <= 0) break; // Safety check
+
+        // Prepare frame for encoder
+        av_frame_unref(encoder->frame);
+        
+        encoder->frame->format = encoder->codec_ctx->sample_fmt;
+        if (av_channel_layout_copy(&encoder->frame->ch_layout, &encoder->codec_ctx->ch_layout) < 0) {
+             return SF_RESULT_ENCODER_ERROR_ENCODING_FAILED;
+        }
+        encoder->frame->sample_rate = encoder->codec_ctx->sample_rate;
+        encoder->frame->nb_samples = to_read;
+        
+        ret = av_frame_get_buffer(encoder->frame, 0);
+        if (ret < 0) {
+            if (ret == AVERROR(ENOMEM)) return SF_RESULT_ERROR_ALLOCATION_FAILED;
+            return SF_RESULT_ENCODER_ERROR_PACKET_FRAME_ALLOC;
+        }
+
+        // Read from FIFO
+        if (av_audio_fifo_read(encoder->fifo, (void**)encoder->frame->data, to_read) < to_read) {
+            return SF_RESULT_ENCODER_ERROR_ENCODING_FAILED;
+        }
+
+        // Set PTS
+        encoder->frame->pts = encoder->next_pts;
+        encoder->next_pts += to_read;
+        
+        ret = encode_and_write(encoder, encoder->frame);
+        if (ret < 0) {
+             if (ret == AVERROR(EIO)) {
+                return SF_RESULT_ENCODER_ERROR_WRITE_FAILED;
+            }
+            return SF_RESULT_ENCODER_ERROR_ENCODING_FAILED;
+        }
     }
 
     *out_frames_written = frameCount;
@@ -471,12 +582,39 @@ SF_FFMPEG_API SF_Result sf_encoder_write_pcm_frames(SF_Encoder* encoder, void* p
 SF_FFMPEG_API void sf_encoder_free(SF_Encoder* encoder) {
     if (!encoder) return;
 
-    // Flush the encoder by sending a NULL frame
-    encode_and_write(encoder, NULL);
+    // Flush any remaining samples in FIFO
+    if (encoder->fifo) {
+        int remaining_samples = av_audio_fifo_size(encoder->fifo);
+        if (remaining_samples > 0) {
+            av_frame_unref(encoder->frame);
+            encoder->frame->format = encoder->codec_ctx->sample_fmt;
+            av_channel_layout_copy(&encoder->frame->ch_layout, &encoder->codec_ctx->ch_layout);
+            encoder->frame->sample_rate = encoder->codec_ctx->sample_rate;
+            encoder->frame->nb_samples = remaining_samples;
+            
+            if (av_frame_get_buffer(encoder->frame, 0) >= 0) {
+                if (av_audio_fifo_read(encoder->fifo, (void**)encoder->frame->data, remaining_samples) == remaining_samples) {
+                    encoder->frame->pts = encoder->next_pts;
+                    encoder->next_pts += remaining_samples;
+                    encode_and_write(encoder, encoder->frame);
+                }
+            }
+        }
+        av_audio_fifo_free(encoder->fifo);
 
-    av_write_trailer(encoder->format_ctx);
+        // Flush the encoder by sending a NULL frame
+        encode_and_write(encoder, NULL);
 
-    avcodec_free_context(&encoder->codec_ctx);
+        // Write the trailer (only valid if header was successfully written, implied by fifo existence)
+        av_write_trailer(encoder->format_ctx);
+    }
+
+    // Free resources. 
+
+    if (encoder->codec_ctx) {
+        avcodec_free_context(&encoder->codec_ctx);
+    }
+
     if (encoder->format_ctx) {
         if (encoder->format_ctx->pb) {
             // Flush any buffered data before freeing.
@@ -487,9 +625,10 @@ SF_FFMPEG_API void sf_encoder_free(SF_Encoder* encoder) {
         avformat_free_context(encoder->format_ctx);
     }
 
-    av_packet_free(&encoder->packet);
-    av_frame_free(&encoder->frame);
-    swr_free(&encoder->swr_ctx);
+    if (encoder->packet) av_packet_free(&encoder->packet);
+    if (encoder->frame) av_frame_free(&encoder->frame);
+    if (encoder->temp_frame) av_frame_free(&encoder->temp_frame);
+    if (encoder->swr_ctx) swr_free(&encoder->swr_ctx);
 
     free(encoder);
 }

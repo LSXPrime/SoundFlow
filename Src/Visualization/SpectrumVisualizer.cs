@@ -42,7 +42,7 @@ public class SpectrumVisualizer : IVisualizer
     }
 
     /// <inheritdoc/>
-    public void ProcessOnAudioData(Span<float> audioData)
+    public void ProcessOnAudioData(ReadOnlySpan<float> audioData)
     {
         // No need to do anything here, the spectrum analyzer already has the data.
         VisualizationUpdated?.Invoke(this, EventArgs.Empty);

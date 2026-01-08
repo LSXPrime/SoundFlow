@@ -25,11 +25,13 @@ public class RawDataProvider : ISoundDataProvider
     ///     Initializes a new instance of the <see cref="RawDataProvider"/> class from a raw float array.
     /// </summary>
     /// <param name="rawSamples">The raw float array containing the audio samples.</param>
+    /// <param name="sampleRate">The sample rate of the audio data. Defaults to 48000.</param>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="rawSamples"/> is <c>null</c>.</exception>
-    public RawDataProvider(float[] rawSamples)
+    public RawDataProvider(float[] rawSamples, int sampleRate = 48000)
     {
         _floatData = rawSamples ?? throw new ArgumentNullException(nameof(rawSamples));
         _sampleFormat = SampleFormat.F32;
+        SampleRate = sampleRate;
     }
     
     /// <summary>
@@ -37,13 +39,15 @@ public class RawDataProvider : ISoundDataProvider
     /// </summary>
     /// <param name="pcmStream">The raw PCM stream containing the audio samples.</param>
     /// <param name="sampleFormat">The sample format of the raw PCM stream.</param>
+    /// <param name="sampleRate">The sample rate of the audio data. Defaults to 48000.</param>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="pcmStream"/> is <c>null</c>.</exception>
     /// <exception cref="ArgumentException">Thrown if <paramref name="sampleFormat"/> is <see cref="SampleFormat.Unknown"/>.</exception>
-    public RawDataProvider(Stream pcmStream, SampleFormat sampleFormat)
+    public RawDataProvider(Stream pcmStream, SampleFormat sampleFormat, int sampleRate = 48000)
     {
         _pcmStream = pcmStream ?? throw new ArgumentNullException(nameof(pcmStream));
         _sampleFormat = sampleFormat != SampleFormat.Unknown ? sampleFormat 
             : throw new ArgumentException("SampleFormat cannot be Unknown for RawDataProvider when using a stream.", nameof(sampleFormat));
+        SampleRate = sampleRate;
     }
     
     /// <summary>
@@ -51,35 +55,41 @@ public class RawDataProvider : ISoundDataProvider
     /// </summary>
     /// <param name="rawBytes">The raw byte array containing the audio samples.</param>
     /// <param name="sampleFormat">The sample format of the raw byte array.</param>
+    /// <param name="sampleRate">The sample rate of the audio data. Defaults to 48000.</param>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="rawBytes"/> is <c>null</c>.</exception>
     /// <exception cref="ArgumentException">Thrown if <paramref name="sampleFormat"/> is <see cref="SampleFormat.Unknown"/>.</exception>
-    public RawDataProvider(byte[] rawBytes, SampleFormat sampleFormat)
+    public RawDataProvider(byte[] rawBytes, SampleFormat sampleFormat, int sampleRate = 48000)
     {
         _byteArray = rawBytes ?? throw new ArgumentNullException(nameof(rawBytes));
         _sampleFormat = sampleFormat != SampleFormat.Unknown ? sampleFormat 
             : throw new ArgumentException("SampleFormat cannot be Unknown for RawDataProvider when using a byte array.", nameof(sampleFormat));
+        SampleRate = sampleRate;
     }
     
     /// <summary>
     ///     Initializes a new instance of the <see cref="RawDataProvider"/> class from a raw int array.
     /// </summary>
     /// <param name="rawSamples">The raw int array containing the audio samples.</param>
+    /// <param name="sampleRate">The sample rate of the audio data. Defaults to 48000.</param>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="rawSamples"/> is <c>null</c>.</exception>
-    public RawDataProvider(int[] rawSamples)
+    public RawDataProvider(int[] rawSamples, int sampleRate = 48000)
     {
         _intArray = rawSamples ?? throw new ArgumentNullException(nameof(rawSamples));
         _sampleFormat = SampleFormat.S32;
+        SampleRate = sampleRate;
     }
     
     /// <summary>
     ///     Initializes a new instance of the <see cref="RawDataProvider"/> class from a raw short array.
     /// </summary>
     /// <param name="rawSamples">The raw short array containing the audio samples.</param>
+    /// <param name="sampleRate">The sample rate of the audio data. Defaults to 48000.</param>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="rawSamples"/> is <c>null</c>.</exception>
-    public RawDataProvider(short[] rawSamples)
+    public RawDataProvider(short[] rawSamples, int sampleRate = 48000)
     {
         _shortData = rawSamples ?? throw new ArgumentNullException(nameof(rawSamples));
         _sampleFormat = SampleFormat.S16;
+        SampleRate = sampleRate;
     }
     
 
@@ -96,13 +106,13 @@ public class RawDataProvider : ISoundDataProvider
     public SampleFormat SampleFormat => _sampleFormat;
 
     /// <inheritdoc />
-    public int SampleRate { get; } = 48000; // Assuming 48kHz sample rate
+    public int SampleRate { get; init; } = 48000;
 
     /// <inheritdoc />
     public bool IsDisposed { get; private set; }
     
     /// <inheritdoc />
-    public SoundFormatInfo? FormatInfo => null;
+    public SoundFormatInfo? FormatInfo { get; init; }
 
     /// <inheritdoc />
     public event EventHandler<EventArgs>? EndOfStreamReached;

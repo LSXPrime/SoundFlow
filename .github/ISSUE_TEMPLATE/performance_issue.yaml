@@ -77,7 +77,7 @@ body:
         ```csharp
         // Your MRE code here
         ```
-      render: shell
+      render: csharp
     validations:
       required: false
 
@@ -91,7 +91,7 @@ body:
         *   Exported profiling sessions (if shareable).
         *   Key findings from the profiler.
       placeholder: Paste profiling data, links, or key findings here.
-      render: shell
+      render: markdown
     validations:
       required: false
 

@@ -560,29 +560,11 @@ public static class MathHelper
 
         return window;
     }
-
-    /// <summary>
-    /// Performs linear interpolation between two values
-    /// </summary>
-    public static float Lerp(float a, float b, float t) => a + (b - a) * Math.Clamp(t, 0, 1);
-
+    
     /// <summary>
     /// Checks if a number is a power of two (2, 4, 8, 16, etc.).
     /// </summary>
     public static bool IsPowerOfTwo(long n) => (n > 0) && ((n & (n - 1)) == 0);
-
-    /// <summary>
-    /// Returns the remainder after division, in the range [0, y).
-    /// </summary>
-    public static double Mod(this double x, double y) => x - y * Math.Floor(x / y);
-
-    /// <summary>
-    /// Returns the principal angle of a number in the range [-PI, PI).
-    /// </summary>
-    public static float PrincipalAngle(float angle)
-    {
-        return angle - (2 * MathF.PI * MathF.Floor((angle + MathF.PI) / (2 * MathF.PI)));
-    }
 
     /// <summary>
     /// Approximates the cosine of a vector using a highly accurate polynomial on a reduced quadrant.

@@ -62,7 +62,7 @@ public static class MidiFileParser
             else
             {
                 // This is an unknown or non-track chunk. Read its length and skip it.
-                Log.Error($"[MIDI Parser] Skipping unknown chunk type '{chunkId}' of length {chunkLength}.");
+                Log.Error($"Skipping unknown chunk type '{chunkId}' of length {chunkLength}.");
                 reader.BaseStream.Seek(chunkLength, SeekOrigin.Current);
             }
         }

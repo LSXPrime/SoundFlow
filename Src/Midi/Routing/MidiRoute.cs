@@ -164,7 +164,7 @@ public sealed class MidiRoute
             if (result.IsFailure)
             {
                 IsFaulted = true;
-                Log.Error($"[MIDI Route Fault] Route from '{Source.Name}' to '{Destination.Name}' failed: {result.Error?.Message}");
+                Log.Error($"Route from '{Source.Name}' to '{Destination.Name}' failed: {result.Error?.Message}");
                 OnError?.Invoke(this, result.Error);
             }
         }
@@ -181,7 +181,7 @@ public sealed class MidiRoute
             if (result.IsFailure)
             {
                 IsFaulted = true;
-                Log.Error($"[MIDI Route Fault] SysEx route from '{Source.Name}' to '{Destination.Name}' failed: {result.Error?.Message}");
+                Log.Error($"SysEx route from '{Source.Name}' to '{Destination.Name}' failed: {result.Error?.Message}");
                 OnError?.Invoke(this, result.Error);
             }
         }

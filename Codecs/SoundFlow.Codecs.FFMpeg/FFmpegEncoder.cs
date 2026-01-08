@@ -39,8 +39,10 @@ internal sealed class FFmpegEncoder : ISoundEncoder
             
         if (result != FFmpegResult.Success)
         {
+            var logMessage = $"Failed to initialize FFmpeg encoder for format '{formatId}'. Result: {result}";
+            Log.Error(logMessage);
             _handle.Dispose();
-            throw new FFmpegException(result, $"Failed to initialize FFmpeg encoder for format '{formatId}'. Result: {result}");
+            throw new FFmpegException(result, logMessage);
         }
     }
 
@@ -77,7 +79,7 @@ internal sealed class FFmpegEncoder : ISoundEncoder
         }
         catch
         {
-            Log.Critical("[FFmpegEncoder] Failed to write to stream.");
+            Log.Critical("Failed to write to stream.");
             return 0;
         }
     }

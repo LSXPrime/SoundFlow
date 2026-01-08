@@ -54,19 +54,20 @@ internal class Mp3Reader : BaseSoundFormatReader
             FormatIdentifier = "mp3", 
             IsLossless = false
         };
-        long audioDataStart = 0;
+        
         var streamLength = stream.Length;
 
-        // Read ID3v2 tag if requested
-        if (options.ReadTags)
+        // Check for an ID3v2 tag to determine the correct audio data starting offset.
+        var (isTagPresent, tagSize) = await Id3V2Reader.TryGetHeaderInfoAsync(stream);
+        var audioDataStart = isTagPresent ? tagSize : 0;
+
+        // If the user wants to read tags and a tag is present, fully parse it.
+        if (options.ReadTags && isTagPresent)
         {
             var id3Reader = new Id3V2Reader();
-            var id3Result = await id3Reader.ReadAsync(stream, options);
+            var id3Result = await id3Reader.ReadAsync(stream, options); // This will parse the full tag.
             if (id3Result.IsFailure) return Result<SoundFormatInfo>.Fail(id3Result.Error!);
-            var (tag, tagSize) = id3Result.Value;
-            
-            info.Tags = tag;
-            audioDataStart = tagSize;
+            info.Tags = id3Result.Value.Item1;
         }
 
         // If no ID3v2 tags were found, try to read ID3v1 tags from the end of the file.
@@ -89,19 +90,17 @@ internal class Mp3Reader : BaseSoundFormatReader
             var parseResult = ParseFrameHeader(headerBuffer, info);
             if(parseResult.IsFailure) return Result<SoundFormatInfo>.Fail(parseResult.Error!);
 
-            if (options.DurationAccuracy == DurationAccuracy.AccurateScan)
+            // Try to read VBR header regardless of accuracy setting.
+            try
             {
-                try
-                {
-                    await TryReadVbrHeaderAsync(stream, headerBuffer, info);
-                }
-                catch (EndOfStreamException ex)
-                {
-                    return new CorruptFrameError("MP3 Xing/VBRI", "File is truncated or VBR header is malformed.", ex);
-                }
+                await TryReadVbrHeaderAsync(stream, headerBuffer, info);
+            }
+            catch (EndOfStreamException ex)
+            {
+                return new CorruptFrameError("MP3 Xing/VBRI", "File is truncated or VBR header is malformed.", ex);
             }
 
-            // Estimate duration if not accurately determined
+            // Fallback estimation if no VBR header was found
             if (info.Duration == TimeSpan.Zero && info.Bitrate > 0)
             {
                 var audioDataLength = streamLength - audioDataStart;

@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using SoundFlow.Enums;
 using SoundFlow.Midi.Structs;
 using SoundFlow.Modifiers;
 using SoundFlow.Structs;
@@ -82,7 +83,7 @@ internal sealed class Voice : IVoice
         {
             _filter = new Filter(new AudioFormat { SampleRate = context.SampleRate, Channels = 2 })
             {
-                Type = Filter.FilterType.LowPass,
+                Type = FilterType.LowPass,
                 Resonance = 0.5f
             };
 

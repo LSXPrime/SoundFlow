@@ -125,7 +125,7 @@ body:
         ```csharp
         // Your MRE code here
         ```
-      render: shell
+      render: csharp
     validations:
       required: false
 
@@ -137,7 +137,7 @@ body:
         ```
         (Paste full error message and stack trace here)
         ```
-      render: shell
+      render: csharp
     validations:
       required: false
 

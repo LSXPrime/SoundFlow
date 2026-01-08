@@ -294,6 +294,7 @@ public class NoiseSuppressor : IDisposable
         }
     }
 
+    /// <inheritdoc />
     ~NoiseSuppressor()
     {
         Dispose();

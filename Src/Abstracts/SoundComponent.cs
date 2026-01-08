@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using SoundFlow.Components;
@@ -10,6 +11,7 @@ namespace SoundFlow.Abstracts;
 /// <summary>
 ///     Base class for audio processing components.
 /// </summary>
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicMethods)]
 public abstract class SoundComponent : IDisposable, IMidiMappable
 {
     private static readonly ArrayPool<float> BufferPool = ArrayPool<float>.Shared;

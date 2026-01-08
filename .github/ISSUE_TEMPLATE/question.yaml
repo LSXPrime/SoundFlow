@@ -58,7 +58,7 @@ body:
         ```csharp
         // Your code here
         ```
-      render: shell
+      render: csharp
     validations:
       required: false
 

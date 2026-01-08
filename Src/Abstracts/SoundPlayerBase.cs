@@ -10,7 +10,7 @@ namespace SoundFlow.Abstracts;
 /// </summary>
 public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
 {
-    private protected int RawSamplePosition;
+    private int _rawSamplePosition;
 
     private readonly ISoundDataProvider _dataProvider;
     private float _currentFractionalFrame;
@@ -20,9 +20,10 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
     private int _loopStartSamples;
     private int _loopEndSamples = -1;
     private readonly WsolaTimeStretcher _timeStretcher;
-    private readonly float[] _timeStretcherInputBuffer;
+    private float[] _timeStretcherInputBuffer;
     private int _timeStretcherInputBufferValidSamples;
     private int _timeStretcherInputBufferReadOffset;
+    private WsolaConfig _timeStretchConfig;
 
     /// <inheritdoc />
     public float PlaybackSpeed
@@ -40,6 +41,34 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
         }
     }
 
+    /// <summary>
+    /// Gets or sets the detailed configuration for the WSOLA time stretcher.
+    /// Allows fine-tuning of window size, hop size, and search radius.
+    /// </summary>
+    public WsolaConfig TimeStretchConfig
+    {
+        get => _timeStretchConfig;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (_timeStretchConfig != value)
+            {
+                _timeStretchConfig = value;
+                _timeStretcher.Configure(value);
+                EnsureTimeStretcherBufferSize();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sets the time stretcher configuration based on a performance preset.
+    /// </summary>
+    /// <param name="preset">The desired balance between quality and performance.</param>
+    public void SetTimeStretchQuality(WsolaPerformancePreset preset)
+    {
+        TimeStretchConfig = WsolaConfig.FromPreset(preset);
+    }
+
     /// <inheritdoc />
     public PlaybackState State { get; internal set; }
 
@@ -53,7 +82,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
     public float Time =>
         _dataProvider.Length == 0 || Format.Channels == 0 || Format.SampleRate == 0
             ? 0
-            : (float)RawSamplePosition / Format.Channels / Format.SampleRate;
+            : (float)_rawSamplePosition / Format.Channels / Format.SampleRate;
 
     /// <inheritdoc />
     public float Duration =>
@@ -80,7 +109,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
 
 
     /// <summary>
-    /// Constructor for BaseSoundPlayer.
+    /// Constructor for Base SoundPlayer.
     /// </summary>
     /// <param name="engine">The audio engine instance.</param>
     /// <param name="format">The audio device instance.</param>
@@ -93,7 +122,10 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
         var initialSampleRate = format.SampleRate > 0 ? format.SampleRate : 44100;
         var resampleBufferFrames = Math.Max(256, initialSampleRate / 10);
         _resampleBuffer = new float[resampleBufferFrames * initialChannels];
-        _timeStretcher = new WsolaTimeStretcher(initialChannels, _playbackSpeed);
+        
+        // Initialize with default fast config
+        _timeStretchConfig = WsolaConfig.FromPreset(WsolaPerformancePreset.Fast);
+        _timeStretcher = new WsolaTimeStretcher(initialChannels, _playbackSpeed, _timeStretchConfig);
         _timeStretcherInputBuffer = new float[Math.Max(_timeStretcher.MinInputSamplesToProcess * 2, 8192 * initialChannels)];
     }
 
@@ -110,8 +142,8 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
         // Proactively check for looping before generating audio. This handles loops where a specific end point is set.
         if (IsLooping && _loopEndSamples != -1)
         {
-            // Ensure loop is valid and we've reached or passed the end point.
-            if (_loopStartSamples < _loopEndSamples && RawSamplePosition >= _loopEndSamples)
+            // Ensure loop is valid, and we've reached or passed the end point.
+            if (_loopStartSamples < _loopEndSamples && _rawSamplePosition >= _loopEndSamples)
                 Seek(_loopStartSamples, channels);
         }
 
@@ -133,7 +165,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
                     break; // Exit the read loop
                 }
 
-                RawSamplePosition += samplesReadThisCall;
+                _rawSamplePosition += samplesReadThisCall;
                 outputSlice = outputSlice.Slice(samplesReadThisCall);
             }
             return;
@@ -162,8 +194,8 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
                 // If still not enough data after filling and the provider is truly exhausted and can't provide more data, end of stream.
                 if (_resampleBufferValidSamples < samplesRequiredInBufferForInterpolation)
                 {
-                    RawSamplePosition += totalSourceSamplesAdvancedThisCall;
-                    RawSamplePosition = Math.Min(RawSamplePosition, _dataProvider.Length);
+                    _rawSamplePosition += totalSourceSamplesAdvancedThisCall;
+                    _rawSamplePosition = Math.Min(_rawSamplePosition, _dataProvider.Length);
                     HandleEndOfStream(output[outputBufferOffset..], channels);
                     return;
                 }
@@ -212,8 +244,8 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
         }
 
         // Update raw sample position based on actual source samples advanced.
-        RawSamplePosition += totalSourceSamplesAdvancedThisCall;
-        RawSamplePosition = Math.Min(RawSamplePosition, _dataProvider.Length);
+        _rawSamplePosition += totalSourceSamplesAdvancedThisCall;
+        _rawSamplePosition = Math.Min(_rawSamplePosition, _dataProvider.Length);
     }
 
     /// <summary>
@@ -234,7 +266,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
         }
 
         // When playback speed is close to 1.0, use simpler interpolation.
-        if (Math.Abs(_playbackSpeed - 1.0f) < 0.1f)
+        if (Math.Abs(_playbackSpeed - 1.0f) < 0.001f)
         {
             // Implement a persistent read loop instead of a single read call.
             var totalDirectRead = 0;
@@ -363,6 +395,39 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
         return totalSourceSamplesRepresented;
     }
 
+    private void EnsureTimeStretcherBufferSize()
+    {
+        var minSize = _timeStretcher.MinInputSamplesToProcess;
+        // Keep the logic similar to constructor: * 2 or min 8192*channels
+        var targetSize = Math.Max(minSize * 2, 8192 * Format.Channels);
+    
+        if (_timeStretcherInputBuffer.Length < targetSize)
+        {
+            // Compact existing data to start before resizing
+            if (_timeStretcherInputBufferValidSamples > 0)
+            {
+                if (_timeStretcherInputBufferReadOffset > 0)
+                {
+                    var remaining = _timeStretcherInputBufferValidSamples - _timeStretcherInputBufferReadOffset;
+                    if (remaining > 0)
+                    {
+                        Buffer.BlockCopy(_timeStretcherInputBuffer, _timeStretcherInputBufferReadOffset * sizeof(float),
+                            _timeStretcherInputBuffer, 0, remaining * sizeof(float));
+                    }
+                    _timeStretcherInputBufferValidSamples = remaining;
+                    _timeStretcherInputBufferReadOffset = 0;
+                }
+            }
+            else
+            {
+                _timeStretcherInputBufferValidSamples = 0;
+                _timeStretcherInputBufferReadOffset = 0;
+            }
+
+            Array.Resize(ref _timeStretcherInputBuffer, targetSize);
+        }
+    }
+
     /// <summary>
     /// Handles the end-of-stream condition, including looping and stopping.
     /// This is called when the data provider is fully exhausted (ReadBytes returns 0).
@@ -383,8 +448,8 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
                 if (currentlyValidInResample < spaceToFill)
                 {
                     var sourceSamplesFromFinalFill = FillResampleBuffer(Math.Max(currentlyValidInResample, spaceToFill), channels);
-                    RawSamplePosition += sourceSamplesFromFinalFill;
-                    RawSamplePosition = Math.Min(RawSamplePosition, _dataProvider.Length);
+                    _rawSamplePosition += sourceSamplesFromFinalFill;
+                    _rawSamplePosition = Math.Min(_rawSamplePosition, _dataProvider.Length);
                 }
 
                 var toCopy = Math.Min(spaceToFill, _resampleBufferValidSamples);
@@ -548,7 +613,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
         sampleOffset = (sampleOffset / channels) * channels;
         sampleOffset = Math.Clamp(sampleOffset, 0, maxSeekableSample);
         _dataProvider.Seek(sampleOffset);
-        RawSamplePosition = sampleOffset;
+        _rawSamplePosition = sampleOffset;
         _currentFractionalFrame = 0f;
         _resampleBufferValidSamples = 0;
         _timeStretcher.Reset();

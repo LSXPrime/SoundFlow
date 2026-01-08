@@ -61,7 +61,7 @@ public class LevelMeterVisualizer : IVisualizer
     }
 
     /// <inheritdoc/>
-    public void ProcessOnAudioData(Span<float> audioData)
+    public void ProcessOnAudioData(ReadOnlySpan<float> audioData)
     {
         _level = _levelMeterAnalyzer.Rms;
 

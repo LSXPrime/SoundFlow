@@ -260,7 +260,7 @@ internal static class Program
 
             if (key == ConsoleKey.S)
             {
-                // NOTE: To switch a loopback source, we present the user with a list of *playback* devices.
+                // NOTE: To switch a loopback source, we present the user with a list of playback devices.
                 // The selected playback device will become the new source for loopback capture.
                 var newDeviceInfo = SelectDevice(DeviceType.Playback);
                 if (newDeviceInfo.HasValue)

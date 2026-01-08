@@ -117,6 +117,7 @@ public sealed class StreamConfig : IDisposable
         }
     }
 
+    /// <inheritdoc />
     ~StreamConfig()
     {
         Dispose(false);
@@ -227,7 +228,8 @@ public class ProcessingConfig : IDisposable
             _disposedValue = true;
         }
     }
-
+    
+    /// <inheritdoc />
     ~ProcessingConfig()
     {
         Dispose(false);
@@ -369,6 +371,7 @@ public sealed class ApmConfig : IDisposable
         }
     }
 
+    /// <inheritdoc />
     ~ApmConfig()
     {
         Dispose(false);
@@ -760,6 +763,7 @@ public sealed class AudioProcessingModule : IDisposable
         }
     }
 
+    /// <inheritdoc />
     ~AudioProcessingModule()
     {
         Dispose(false);

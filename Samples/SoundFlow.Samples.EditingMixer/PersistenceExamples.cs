@@ -7,6 +7,8 @@ using SoundFlow.Editing;
 using SoundFlow.Editing.Persistence;
 using SoundFlow.Enums;
 using SoundFlow.Providers;
+using SoundFlow.Security.Configuration;
+using SoundFlow.Security.Utils;
 using SoundFlow.Structs;
 
 namespace SoundFlow.Samples.EditingMixer;
@@ -24,7 +26,7 @@ public static class PersistenceExamples
 
     public static void Run()
     {
-        Console.WriteLine("\nSoundFlow Editing - Persistence Examples");
+        Console.WriteLine("\nSoundFlow Editing — Persistence Examples");
         Console.WriteLine("========================================");
 
         Directory.CreateDirectory(ProjectSaveDirectory);
@@ -39,6 +41,8 @@ public static class PersistenceExamples
             Console.WriteLine(" 2. Create, Save, and Load a Project (Embed Small Media, No Consolidate)");
             Console.WriteLine(" 3. Load Project with Missing Media and Relink");
             Console.WriteLine(" 4. Demonstrate Dirty Flag");
+            Console.WriteLine(" 5. Create, Sign, and Verify a Secure Project");
+            Console.WriteLine(" 6. Attempt to Verify a Tampered Project");
             Console.WriteLine(" 0. Back to Main Menu / Exit");
             Console.Write("Enter your choice: ");
 
@@ -50,6 +54,8 @@ public static class PersistenceExamples
                     case 2: RunPersistenceExample(SaveAndLoadSimpleProject_Embed, "Save/Load Simple (Embed)"); break;
                     case 3: RunPersistenceExample(LoadWithMissingMediaAndRelink, "Load Missing & Relink"); break;
                     case 4: RunPersistenceExample(DemonstrateDirtyFlag, "Demonstrate Dirty Flag"); break;
+                    case 5: RunPersistenceExample(CreateSignAndVerifySecureProject, "Sign & Verify Secure Project"); break;
+                    case 6: RunPersistenceExample(VerifyTamperedProject, "Verify Tampered Project"); break;
                     case 0: running = false; break;
                     default: Console.WriteLine("Invalid choice. Please try again."); break;
                 }
@@ -134,7 +140,7 @@ public static class PersistenceExamples
 
     private static async Task SaveAndLoadSimpleProject_Consolidate()
     {
-        var projectName = "SimpleProject_Consolidated";
+        const string projectName = "SimpleProject_Consolidated";
         var projectFilePath = Path.Combine(ProjectSaveDirectory, $"{projectName}.sfproj");
 
         Console.WriteLine($"Creating composition: {projectName}");
@@ -392,5 +398,90 @@ public static class PersistenceExamples
 
         composition.Dispose();
         return Task.CompletedTask;
+    }
+
+    private static async Task CreateSignAndVerifySecureProject()
+    {
+        var projectName = "SecureProject_Signed";
+        var projectFilePath = Path.Combine(ProjectSaveDirectory, $"{projectName}.sfproj");
+
+        Console.WriteLine("Generating ECDSA key pair for project signing...");
+        var keys = SignatureKeyGenerator.Generate();
+        
+        Console.WriteLine($"Creating composition: {projectName}");
+        var composition = new Composition(AudioEngine, Format, projectName);
+        var track = new Track("Secure Track");
+        composition.Editor.AddTrack(track);
+        
+        // Add dummy segment
+        var beepDuration = TimeSpan.FromSeconds(1.0);
+        var beepProvider = DemoAudio.GenerateShortBeep(beepDuration);
+        track.AddSegment(new AudioSegment(Format, beepProvider, TimeSpan.Zero, beepDuration, TimeSpan.Zero, "Beep", ownsDataProvider: true));
+
+        // Save with signing
+        Console.WriteLine($"Saving and signing project to: {projectFilePath}");
+        await CompositionProjectManager.SaveProjectAsync(AudioEngine, composition, projectFilePath, new ProjectSaveOptions
+        {
+            SigningConfiguration = new SignatureConfiguration { PrivateKeyPem = keys.PrivateKeyPem }
+        });
+        Console.WriteLine("Project saved and signed (.sig file created).");
+        composition.Dispose();
+
+        // Verify before loading
+        Console.WriteLine("Verifying project integrity...");
+        var verifyResult = await CompositionProjectManager.VerifyProjectAsync(projectFilePath, null, new SignatureConfiguration { PublicKeyPem = keys.PublicKeyPem });
+
+        if (verifyResult is { IsSuccess: true, Value: true })
+        {
+            Console.WriteLine("SUCCESS: Project verification passed. The file is authentic.");
+            
+            // Proceed to load
+            var (loadedComposition, _) = await CompositionProjectManager.LoadProjectAsync(AudioEngine, Format, projectFilePath);
+            Console.WriteLine("Project loaded successfully.");
+            loadedComposition.Dispose();
+        }
+        else
+        {
+            Console.WriteLine($"FAILURE: Project verification failed! {verifyResult.Error?.Message}");
+        }
+    }
+
+    private static async Task VerifyTamperedProject()
+    {
+        var projectName = "TamperedProject";
+        var projectFilePath = Path.Combine(ProjectSaveDirectory, $"{projectName}.sfproj");
+
+        Console.WriteLine($"Generating ECDSA key pair...");
+        var keys = SignatureKeyGenerator.Generate();
+        
+        Console.WriteLine($"Creating and saving valid project: {projectName}");
+        var composition = new Composition(AudioEngine, Format, projectName);
+        await CompositionProjectManager.SaveProjectAsync(AudioEngine, composition, projectFilePath, new ProjectSaveOptions
+        {
+            SigningConfiguration = new SignatureConfiguration { PrivateKeyPem = keys.PrivateKeyPem }
+        });
+        composition.Dispose();
+
+        // Simulating tampering
+        Console.WriteLine("Simulating tampering: Modifying project file content...");
+        var originalContent = await File.ReadAllTextAsync(projectFilePath);
+        // Replace something benign but structurally valid to ensure it's not just a JSON parse error, but a signature mismatch.
+        var tamperedContent = originalContent.Replace(projectName, "HackedProjectName"); 
+        await File.WriteAllTextAsync(projectFilePath, tamperedContent);
+
+        // Verify
+        Console.WriteLine("Attempting to verify tampered project...");
+        var verifyResult = await CompositionProjectManager.VerifyProjectAsync(projectFilePath, null, new SignatureConfiguration { PublicKeyPem = keys.PublicKeyPem });
+
+        if (verifyResult is { IsSuccess: true, Value: true })
+        {
+            Console.WriteLine("FAILURE: Tampered project was accepted as valid! (This is bad)");
+        }
+        else
+        {
+            Console.WriteLine("SUCCESS: Tampered project was correctly rejected.");
+            if (!verifyResult.Value) Console.WriteLine("Reason: Signature mismatch (bool check).");
+            if (verifyResult.IsFailure) Console.WriteLine($"Reason: {verifyResult.Error?.Message}");
+        }
     }
 }

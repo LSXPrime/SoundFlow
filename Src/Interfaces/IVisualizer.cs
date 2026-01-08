@@ -14,7 +14,7 @@ public interface IVisualizer : IDisposable
     /// Processes the audio data. This method is called by an analyzer component.
     /// </summary>
     /// <param name="audioData">The audio data to process.</param>
-    void ProcessOnAudioData(Span<float> audioData);
+    void ProcessOnAudioData(ReadOnlySpan<float> audioData);
 
     /// <summary>
     /// Updates the visualization. This method should be called periodically to render the visualization.

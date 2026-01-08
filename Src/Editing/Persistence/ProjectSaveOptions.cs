@@ -1,4 +1,6 @@
-﻿namespace SoundFlow.Editing.Persistence;
+﻿using SoundFlow.Security.Configuration;
+
+namespace SoundFlow.Editing.Persistence;
 
 /// <summary>
 /// Provides a set of configurable options for saving a composition project.
@@ -8,9 +10,9 @@ public class ProjectSaveOptions
     /// <summary>
     /// The project file version to write into the saved file. 
     /// It is recommended to use the library's default version unless you have a specific need for version management.
-    /// The current default is "1.3.0".
+    /// The current default is "1.4.0".
     /// </summary>
-    public string ProjectFileVersion { get; set; } = "1.3.0";
+    public string ProjectFileVersion { get; set; } = "1.4.0";
 
     /// <summary>
     /// The name of the subfolder where consolidated media files will be stored, relative to the project file.
@@ -38,4 +40,11 @@ public class ProjectSaveOptions
     /// Default is true.
     /// </summary>
     public bool EmbedSmallMedia { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the configuration for digitally signing the project file.
+    /// If set, a detached signature file (.sig) will be generated alongside the project file.
+    /// This ensures the integrity and authenticity of the project structure and settings.
+    /// </summary>
+    public SignatureConfiguration? SigningConfiguration { get; set; }
 }

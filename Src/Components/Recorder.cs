@@ -1,13 +1,13 @@
 using SoundFlow.Abstracts;
+using SoundFlow.Abstracts.Devices;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
-using SoundFlow.Exceptions;
-using System.Collections.ObjectModel;
-using SoundFlow.Abstracts.Devices;
-using SoundFlow.Backends.MiniAudio;
-using SoundFlow.Structs;
 using SoundFlow.Metadata;
 using SoundFlow.Metadata.Models;
+using SoundFlow.Security;
+using SoundFlow.Security.Configuration;
+using SoundFlow.Structs;
+using System.Collections.ObjectModel;
 
 namespace SoundFlow.Components;
 
@@ -61,6 +61,13 @@ public class Recorder : IDisposable
     /// </summary>
     public AudioProcessCallback? ProcessCallback;
     
+    /// <summary>
+    /// Gets or sets the configuration for digitally signing the recorded file.
+    /// If set, a detached signature file (.sig) will be generated upon stopping the recording.
+    /// Only applies when recording to a file.
+    /// </summary>
+    public SignatureConfiguration? SigningConfiguration { get; set; }
+    
     private readonly AudioCaptureDevice _captureDevice;
     private ISoundEncoder? _encoder;
     private readonly List<SoundModifier> _modifiers = [];
@@ -69,7 +76,7 @@ public class Recorder : IDisposable
     private readonly AudioFormat _format;
     
     private SoundTags? _tagsToWrite;
-
+    
     /// <summary>
     /// Initializes a new instance of the <see cref="Recorder"/> class to record audio to a file.
     /// </summary>
@@ -81,15 +88,20 @@ public class Recorder : IDisposable
         FilePath = filePath;
     }
 
-
     /// <summary>
     /// Initializes a new instance of the <see cref="Recorder"/> class to record audio to a stream.
     /// </summary>
     /// <param name="captureDevice">The capture device to record from.</param>
-    /// <param name="stream">The stream to write encoded recorded audio to.</param>
+    /// <param name="stream">The stream to write encoded recorded audio to, disposed when recording stops.</param>
     /// <param name="formatId">The string identifier for the desired encoding format (e.g., "wav", "flac"). Defaults to "wav".</param>
+    /// <exception cref="ArgumentException">Thrown if the provided stream is not writable.</exception>
     public Recorder(AudioCaptureDevice captureDevice, Stream stream, string formatId = "wav")
     {
+        if (!stream.CanWrite)
+        {
+            throw new ArgumentException("The provided stream is not writable.", nameof(stream));
+        }
+        
         _captureDevice = captureDevice;
         _engine = captureDevice.Engine;
         SampleFormat = captureDevice.Format.Format;
@@ -114,8 +126,9 @@ public class Recorder : IDisposable
         SampleRate = captureDevice.Format.SampleRate;
         Channels = captureDevice.Format.Channels;
         FormatId = string.Empty; // No encoding format needed for callback mode.
+        _format = captureDevice.Format;
     }
-
+    
     /// <summary>
     /// Gets a read-only list of <see cref="SoundModifier"/> components applied to the recorder.
     /// </summary>
@@ -131,34 +144,44 @@ public class Recorder : IDisposable
     /// If recording to a file or stream, it initializes an audio encoder.
     /// </summary>
     /// <param name="tags">Optional metadata tags to write to the file upon completion of the recording.</param>
-    /// <exception cref="ArgumentException">Thrown if an invalid stream or callback is provided.</exception>
-    public void StartRecording(SoundTags? tags = null)
+    /// <returns>A <see cref="Result"/> indicating success or failure.</returns>
+    public Result StartRecording(SoundTags? tags = null)
     {
         if ((Stream == Stream.Null || !Stream.CanWrite) && ProcessCallback == null)
-            throw new ArgumentException("A valid writable stream or callback must be provided.");
+            return new ValidationError("A valid writable stream or callback must be provided.");
 
-        if (State == PlaybackState.Playing) return;
+        if (State == PlaybackState.Playing) return Result.Fail(new DuplicateRequestError("Starting recording"));
 
         _tagsToWrite = tags;
         if (!string.IsNullOrEmpty(FormatId))
         {
-            _encoder = _engine.CreateEncoder(Stream, FormatId, _format);
+            try
+            {
+                _encoder = _engine.CreateEncoder(Stream, FormatId, _format);
+            }
+            catch (Exception ex)
+            {
+                return new InvalidOperationError($"Failed to create audio encoder for format '{FormatId}'.", ex);
+            }
         }
 
         _captureDevice.OnAudioProcessed += OnAudioProcessed;
         State = PlaybackState.Playing;
+        return Result.Ok();
     }
 
     /// <summary>
     /// Resumes recording from a paused state.
     /// Has no effect if the recorder is not in the <see cref="PlaybackState.Paused"/> state.
     /// </summary>
-    public void ResumeRecording()
+    /// <returns>A <see cref="Result"/> indicating success.</returns>
+    public Result ResumeRecording()
     {
         if (State != PlaybackState.Paused)
-            return;
+            return Result.Fail(new DuplicateRequestError("Resuming recording"));
 
         State = PlaybackState.Playing;
+        return Result.Ok();
     }
 
     /// <summary>
@@ -166,44 +189,97 @@ public class Recorder : IDisposable
     /// Audio data is no longer processed or encoded until recording is resumed.
     /// Has no effect if the recorder is not in the <see cref="PlaybackState.Playing"/> state.
     /// </summary>
-    public void PauseRecording()
+    /// <returns>A <see cref="Result"/> indicating success.</returns>
+    public Result PauseRecording()
     {
         if (State != PlaybackState.Playing)
-            return;
+            return Result.Fail(new DuplicateRequestError("Pausing recording"));
 
         State = PlaybackState.Paused;
+        return Result.Ok();
     }
 
     /// <summary>
     /// Stops the recording process and releases resources.
-    /// If recording to a file, it finalizes the encoding process and writes metadata tags if provided.
+    /// If recording to a file, it finalizes the encoding process, writes metadata tags if provided,
+    /// and generates a digital signature if configured.
     /// </summary>
-    public async Task StopRecordingAsync()
+    /// <returns>A <see cref="Result"/> indicating success or failure.</returns>
+    public async Task<Result> StopRecordingAsync()
     {
         if (State == PlaybackState.Stopped)
-            return;
+            return Result.Fail(new DuplicateRequestError("Stopping recording"));
 
         _captureDevice.OnAudioProcessed -= OnAudioProcessed;
 
         _encoder?.Dispose();
         _encoder = null;
         State = PlaybackState.Stopped;
+        
+        try
+        {
+            await Stream.DisposeAsync();
+        }
+        catch (Exception ex)
+        {
+            return new IoError("Disposing the underlying stream", ex);
+        }
 
         try
         {
-            if (!string.IsNullOrEmpty(FilePath))
-                if (_tagsToWrite != null) await SoundMetadataWriter.WriteTagsAsync(FilePath, _tagsToWrite);
+            if (!string.IsNullOrEmpty(FilePath) && File.Exists(FilePath))
+            {
+                // 1. Write Tags
+                if (_tagsToWrite != null)
+                {
+                    try
+                    {
+                        await SoundMetadataWriter.WriteTagsAsync(FilePath, _tagsToWrite);
+                    }
+                    catch (Exception ex)
+                    {
+                        return new IoError($"writing metadata tags to '{FilePath}'", ex);
+                    }
+                }
+
+                // 2. Sign File (Authentic Recording)
+                if (SigningConfiguration != null)
+                {
+                    var signResult = await FileAuthenticator.SignFileAsync(FilePath, SigningConfiguration);
+                    if (signResult is { IsFailure: true, Error: not null })
+                    {
+                        return Result.Fail(signResult.Error);
+                    }
+
+                    var sigPath = FilePath + ".sig";
+                    try
+                    {
+                        await File.WriteAllTextAsync(sigPath, signResult.Value);
+                    }
+                    catch (UnauthorizedAccessException ex)
+                    {
+                        return new AccessDeniedError(sigPath, ex);
+                    }
+                    catch (IOException ex)
+                    {
+                        return new IoError($"writing signature file to '{sigPath}'", ex);
+                    }
+                }
+            }
         }
         finally
         {
             _tagsToWrite = null;
         }
+        
+        return Result.Ok();
     }
     
     /// <summary>
     /// Synchronously stops the recording process.
     /// </summary>
-    public void StopRecording() => StopRecordingAsync().GetAwaiter().GetResult();
+    /// <returns>A <see cref="Result"/> indicating success or failure.</returns>
+    public Result StopRecording() => StopRecordingAsync().GetAwaiter().GetResult();
 
     /// <summary>
     /// Adds a <see cref="SoundModifier"/> to the recording pipeline.
