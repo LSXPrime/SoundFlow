@@ -8,12 +8,6 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 # Set base library name
 set(LIBRARY_NAME "miniaudio")
 
-# Building Shared Library
-add_library(${LIBRARY_NAME} SHARED
-        library.c
-        library.h
-        miniaudio/miniaudio.h)
-
 # Platform-specific configurations
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     add_definitions(-DMA_DLL)
@@ -114,12 +108,24 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
             PREFIX "lib"
             SUFFIX ".so"
     )
-
-elseif (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    # Emscripten: libminiaudio.js and libminiaudio.wasm
-    set_target_properties(${LIBRARY_NAME} PROPERTIES
-            OUTPUT_NAME "libminiaudio" # Base name for output files (libminiaudio.wasm, libminiaudio.js)
-            SUFFIX ".js"             # Emscripten will generate .js and .wasm
-            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
-    )
 endif ()
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # .NET Wasm requires a static library (.a)
+    add_library(${LIBRARY_NAME} STATIC
+            library.c
+            library.h
+            miniaudio/miniaudio.h)
+            
+    # Match .NET 8 compilation flags or linking will fail or crash at runtime
+    target_compile_options(${LIBRARY_NAME} PRIVATE -msimd128 -fwasm-exceptions)
+    
+    add_definitions(-DMA_NO_RUNTIME_LINKING)
+    add_definitions(-DMA_ENABLE_WEBAUDIO)
+else()
+    # Desktop platforms use Shared Libraries (.dll/.so/.dylib)
+    add_library(${LIBRARY_NAME} SHARED
+            library.c
+            library.h
+            miniaudio/miniaudio.h)
+endif()

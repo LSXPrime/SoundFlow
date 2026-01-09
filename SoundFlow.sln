@@ -1,5 +1,4 @@
-﻿
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow", "Src/SoundFlow.csproj", "{D4326C2E-CDB3-47D4-8116-BB3872E81323}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Src", "Src", "{7841F9AA-861F-4684-8DEC-2828FB3AE048}"
@@ -45,6 +44,14 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.Security.Authentication", "Samples\SoundFlow.Samples.Security.Authentication\SoundFlow.Samples.Security.Authentication.csproj", "{DD934AB4-CD4F-427C-9367-3A48C1156783}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.Recording", "Samples\SoundFlow.Samples.Recording\SoundFlow.Samples.Recording.csproj", "{C51F35EF-3C8F-4865-A51A-99AF616191C3}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SoundFlow.Samples.AvaloniaCrossPlatofrm", "SoundFlow.Samples.AvaloniaCrossPlatofrm", "{67C39F3C-0239-4119-80C6-A1F82A893847}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.AvaloniaCrossPlatform", "Samples\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform.csproj", "{AF3B5AC5-D922-4B82-B627-C745C696BE85}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.AvaloniaCrossPlatform.Desktop", "Samples\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform.Desktop\SoundFlow.Samples.AvaloniaCrossPlatform.Desktop.csproj", "{3CE9D69C-AEC8-4C68-96CD-6099EAF7B19C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.AvaloniaCrossPlatform.Browser", "Samples\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform.Browser\SoundFlow.Samples.AvaloniaCrossPlatform.Browser.csproj", "{028159EE-BC76-4907-B424-AB754D549678}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -124,6 +131,12 @@ Global
 		{C51F35EF-3C8F-4865-A51A-99AF616191C3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C51F35EF-3C8F-4865-A51A-99AF616191C3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C51F35EF-3C8F-4865-A51A-99AF616191C3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AF3B5AC5-D922-4B82-B627-C745C696BE85}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AF3B5AC5-D922-4B82-B627-C745C696BE85}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{028159EE-BC76-4907-B424-AB754D549678}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{028159EE-BC76-4907-B424-AB754D549678}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3CE9D69C-AEC8-4C68-96CD-6099EAF7B19C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3CE9D69C-AEC8-4C68-96CD-6099EAF7B19C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{D4326C2E-CDB3-47D4-8116-BB3872E81323} = {7841F9AA-861F-4684-8DEC-2828FB3AE048}
@@ -145,4 +158,14 @@ Global
 		{DD934AB4-CD4F-427C-9367-3A48C1156783} = {BE06375D-0A93-4916-A551-9875089314CC}
 		{C51F35EF-3C8F-4865-A51A-99AF616191C3} = {BE06375D-0A93-4916-A551-9875089314CC}
 	EndGlobalSection
+		GlobalSection(NestedProjects) = preSolution
+						{D4326C2E-CDB3-47D4-8116-BB3872E81323} = {7841F9AA-861F-4684-8DEC-2828FB3AE048}
+						{11313B38-7DB4-49D9-8828-082CD93412ED} = {BE06375D-0A93-4916-A551-9875089314CC}
+						{46559898-2133-42CD-BE0A-B5FA9A31E737} = {BE06375D-0A93-4916-A551-9875089314CC}
+						{67C39F3C-0239-4119-80C6-A1F82A893847} = {BE06375D-0A93-4916-A551-9875089314CC}
+						{AF3B5AC5-D922-4B82-B627-C745C696BE85} = {67C39F3C-0239-4119-80C6-A1F82A893847}
+						{3CE9D69C-AEC8-4C68-96CD-6099EAF7B19C} = {67C39F3C-0239-4119-80C6-A1F82A893847}
+						{028159EE-BC76-4907-B424-AB754D549678} = {67C39F3C-0239-4119-80C6-A1F82A893847}
+		EndGlobalSection
+
 EndGlobal

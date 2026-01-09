@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net8.0</TargetFramework>
+        <TargetFrameworks>net8.0;net8.0-browser</TargetFrameworks>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -44,9 +44,4 @@
         <None Include="SoundFlow.targets" Pack="true" PackagePath="" />
     </ItemGroup>
 
-    <ItemGroup>
-      <Content Include="..\STATEMENT.md">
-        <Link>STATEMENT.md</Link>
-      </Content>
-    </ItemGroup>
 </Project>

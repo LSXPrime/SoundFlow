@@ -89,6 +89,10 @@ public class MiniAudioEngine : AudioEngine
                 MiniAudioBackend.PulseAudio
             ];
         }
+        else if (OperatingSystem.IsBrowser())
+        {
+            AvailableBackends = [MiniAudioBackend.WebAudio];
+        }
         else
         {
             AvailableBackends = [];

@@ -1,0 +1,61 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0-browser</TargetFramework>
+        <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+        <WasmBuildNative>true</WasmBuildNative>
+        <WasmMainJSPath>wwwroot\main.js</WasmMainJSPath>
+        <WasmRuntimeAssetsLocation>./_framework</WasmRuntimeAssetsLocation>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <WasmExtraFilesToDeploy Include="wwwroot\**"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Avalonia.Browser" Version="$(AvaloniaVersion)"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform.csproj"/>
+    </ItemGroup>
+
+
+    <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-browser'">
+        <NativeFileReference Include="libminiaudio.a">
+            <Source>miniaudio</Source>
+        </NativeFileReference>
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-browser'">
+        <NativeLibrary Include="miniaudio" />
+    </ItemGroup>
+    
+    <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-browser'">
+        <EmccExportedFunction Include="_sf_context_get_backend" />
+        <EmccExportedFunction Include="_sf_get_devices" />
+        <EmccExportedFunction Include="_sf_allocate_context" />
+        <EmccExportedFunction Include="_sf_allocate_device" />
+        <EmccExportedFunction Include="_sf_allocate_device_config" />
+        <EmccExportedFunction Include="_sf_allocate_decoder" />
+        <EmccExportedFunction Include="_sf_allocate_decoder_config" />
+        <EmccExportedFunction Include="_sf_allocate_encoder" />
+        <EmccExportedFunction Include="_sf_allocate_encoder_config" />
+        <EmccExportedFunction Include="_sf_free" />
+        <EmccExportedFunction Include="_sf_free_device_infos" />
+        <EmccExportedFunction Include="_ma_context_init" />
+        <EmccExportedFunction Include="_ma_context_uninit" />
+        <EmccExportedFunction Include="_ma_device_init" />
+        <EmccExportedFunction Include="_ma_device_uninit" />
+        <EmccExportedFunction Include="_ma_device_start" />
+        <EmccExportedFunction Include="_ma_device_stop" />
+        <EmccExportedFunction Include="_ma_decoder_init" />
+        <EmccExportedFunction Include="_ma_decoder_uninit" />
+        <EmccExportedFunction Include="_ma_decoder_read_pcm_frames" />
+        <EmccExportedFunction Include="_ma_decoder_seek_to_pcm_frame" />
+        <EmccExportedFunction Include="_ma_decoder_get_length_in_pcm_frames" />
+        <EmccExportedFunction Include="_ma_encoder_init" />
+        <EmccExportedFunction Include="_ma_encoder_uninit" />
+        <EmccExportedFunction Include="_ma_encoder_write_pcm_frames" />
+    </ItemGroup>
+</Project>

@@ -69,7 +69,7 @@
             <RuntimeIdentifier>iOS-arm64</RuntimeIdentifier>
             <OutputPath>miniaudio.framework</OutputPath>
         </RuntimeTargets>
-        
+
         <!-- FreeBSD Runtimes -->
         <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\freebsd-x64\native\libminiaudio.so" AssetKind="Native">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -81,6 +81,12 @@
             <RuntimeIdentifier>freebsd-arm64</RuntimeIdentifier>
             <OutputPath>libminiaudio.so</OutputPath>
         </RuntimeTargets>
+    </ItemGroup>
 
+    <!-- WASM Runtimes (Browser) -->
+    <ItemGroup Condition="'$(RuntimeIdentifier)' == 'browser-wasm'">
+        <NativeFileReference Include="$(MSBuildThisFileDirectory)..\runtimes\browser-wasm\native\libminiaudio.a">
+            <Source>miniaudio</Source>
+        </NativeFileReference>
     </ItemGroup>
 </Project>

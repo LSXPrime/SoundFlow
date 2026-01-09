@@ -544,8 +544,13 @@ public class WsolaTimeStretcher
 
                     for (var f = 0; f < framesToFade; f++)
                     {
-                        var w = Fade(f, framesToFade);
-                        var inv = 1f - w;
+                        // Calculate fade curve (0.0 to 1.0 based on Sine-Squared/Hanning)
+                        var fadeCurve = Fade(f, framesToFade);
+
+                        // Use Constant Power Crossfade (Square Root)
+                        var w = MathF.Sqrt(fadeCurve);
+                        var inv = MathF.Sqrt(1.0f - fadeCurve);
+
                         var baseIdx = f * currentChannels;
 
                         for (var ch = 0; ch < currentChannels; ch++)
