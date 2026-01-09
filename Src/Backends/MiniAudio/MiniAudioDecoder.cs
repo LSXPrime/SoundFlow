@@ -1,5 +1,7 @@
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices; // Required for UnmanagedCallersOnly
 using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio.Enums;
 using SoundFlow.Enums;
@@ -13,6 +15,9 @@ namespace SoundFlow.Backends.MiniAudio;
 /// </summary>
 internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
 {
+    // Registry to map native decoder pointers back to managed instances
+    private static readonly ConcurrentDictionary<nint, MiniAudioDecoder> Instances = new();
+
     private readonly nint _decoder;
     private readonly Stream _stream;
     private readonly Native.DecoderRead _readCallback;
@@ -37,13 +42,34 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
             AudioEngine.Instance.SampleRate);
 
         _decoder = Native.AllocateDecoder();
+#if !BROWSER
         _readCallback = ReadCallback;
         _seekCallback = SeekCallback;
-        var result = (Result)Native.DecoderInit(Marshal.GetFunctionPointerForDelegate(_readCallback),
-            Marshal.GetFunctionPointerForDelegate(_seekCallback), nint.Zero,
+#endif
+
+        // Register this instance in the static dictionary so the static callbacks can find it.
+        Instances.TryAdd(_decoder, this);
+
+        // Get pointers to the static methods
+        // ma_read_proc: (void*, void*, size_t, size_t*) -> int
+        delegate* unmanaged[Cdecl]<nint, nint, nuint, nuint*, int> readCallbackPtr = &ReadCallbackStatic;
+        
+        // ma_seek_proc: (void*, int64, int) -> int
+        delegate* unmanaged[Cdecl]<nint, long, int, int> seekCallbackPtr = &SeekCallbackStatic;
+
+        // Pass the function pointers directly cast to nint
+        var result = (Result)Native.DecoderInit(
+            (nint)readCallbackPtr,
+            (nint)seekCallbackPtr, 
+            nint.Zero,
             configPtr, _decoder);
 
-        if (result != Result.Success) throw new BackendException("MiniAudio", result, "Unable to initialize decoder.");
+        if (result != Result.Success) 
+        {
+            // If initialization failed, cleanup the registry
+            Instances.TryRemove(_decoder, out _);
+            throw new BackendException("MiniAudio", result, "Unable to initialize decoder.");
+        }
 
         var length = Marshal.AllocHGlobal(Marshal.SizeOf<long>());
         try
@@ -58,6 +84,32 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
         {
             Marshal.FreeHGlobal(length);
         }
+    }
+
+    // Static Wrapper for Read Callback
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static int ReadCallbackStatic(nint pDecoder, nint pBufferOut, nuint bytesToRead, nuint* pBytesRead)
+    {
+        if (Instances.TryGetValue(pDecoder, out var decoder))
+        {
+            var result = (int)decoder.ReadCallback(pDecoder, pBufferOut, bytesToRead, out ulong actualRead);
+            
+            *pBytesRead = (nuint)actualRead;
+            return result;
+        }
+
+        *pBytesRead = 0;
+        return (int)Result.InvalidOperation;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static int SeekCallbackStatic(nint pDecoder, long byteOffset, int point)
+    {
+        if (Instances.TryGetValue(pDecoder, out var decoder))
+        {
+            return (int)decoder.SeekCallback(pDecoder, byteOffset, (SeekPoint)point);
+        }
+        return (int)Result.InvalidOperation;
     }
 
     /// <inheritdoc />
@@ -214,13 +266,13 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
         Dispose(false);
     }
     
-    private Result ReadCallback(nint pDecoder, nint pBufferOut, ulong bytesToRead, nint pBytesRead)
+    private Result ReadCallback(nint pDecoder, nint pBufferOut, ulong bytesToRead, out ulong pBytesRead)
     {
         lock (_syncLock)
         {
             if (!_stream.CanRead || _endOfStreamReached)
             {
-                Marshal.WriteInt64(pBytesRead, 0);
+                pBytesRead = 0;
                 return Result.NoDataAvailable;
             }
 
@@ -246,7 +298,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
             // Clear read buffer
             Array.Clear(_readBuffer, 0, _readBuffer.Length);
 
-            Marshal.WriteInt64(pBytesRead, read);
+            pBytesRead = (ulong)read;
             return Result.Success;
         }
     }
@@ -270,6 +322,10 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
         lock (_syncLock)
         {
             if (IsDisposed) return;
+
+            // Unregister from static dictionary
+            Instances.TryRemove(_decoder, out _);
+            
             if (disposeManaged)
             {
                 if (_shortBuffer != null)
@@ -291,10 +347,12 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
                 }
             }
 
+#if !BROWSER
             // keep delegates alive
             GC.KeepAlive(_readCallback);
             GC.KeepAlive(_seekCallback);
-
+#endif
+            
             _ = Native.DecoderUninit(_decoder);
             Native.Free(_decoder);
 

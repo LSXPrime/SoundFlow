@@ -2,37 +2,70 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:vm="clr-namespace:SoundFlow.Samples.AvaloniaCrossPlatform.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             xmlns:vm="using:SoundFlow.Samples.AvaloniaCrossPlatform.ViewModels"
+             xmlns:converters="clr-namespace:SoundFlow.Samples.AvaloniaCrossPlatform.Converters"
+             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="400"
              x:Class="SoundFlow.Samples.AvaloniaCrossPlatform.Views.MainView"
              x:DataType="vm:MainViewModel">
-  <Design.DataContext>
-    <!-- This only sets the DataContext for the previewer in an IDE,
-         to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-    <vm:MainViewModel />
-  </Design.DataContext>
-
-  <Grid RowDefinitions="Auto, *, Auto, Auto, Auto" ColumnDefinitions="Auto, *, Auto">
-        <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Text="SoundFlow Music Player" FontSize="24" Margin="10" HorizontalAlignment="Center"/>
-
-        <ListBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" ItemsSource="{Binding Tracks}" SelectedItem="{Binding CurrentTrack}"
-                 DisplayMemberBinding="{Binding Title}" Margin="10" MaxHeight="200"/>
-
-        <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" Margin="10" HorizontalAlignment="Center" Grid.ColumnSpan="3">
-            <Button Command="{Binding OpenFolderCommand}" Content="Open Folder" Margin="5"/>
+    
+    <UserControl.Resources>
+        <converters:BoolToPlayPauseConverter x:Key="PlayPauseLabelConverter" />
+    </UserControl.Resources>
+    
+    <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="20">
+        
+        <!-- Header / Menu -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10">
+            <Button Content="Open File..." Click="OpenFile_Clicked" />
+            <TextBlock Text="SoundFlow Player" VerticalAlignment="Center" FontWeight="Bold"/>
         </StackPanel>
 
-        <StackPanel Grid.Row="3" Grid.Column="0" Orientation="Horizontal" Margin="10" HorizontalAlignment="Center" Grid.ColumnSpan="3">
-            <Button Command="{Binding PreviousTrackCommand}" Content="Previous" Margin="5"/>
-            <Button Command="{Binding PlayCommand}" Content="Play" Margin="5"/>
-            <Button Command="{Binding PauseCommand}" Content="Pause" Margin="5"/>
-            <Button Command="{Binding StopCommand}" Content="Stop" Margin="5"/>
-            <Button Command="{Binding NextTrackCommand}" Content="Next" Margin="5"/>
-            <ToggleSwitch Command="{Binding ToggleLoopCommand}" OnContent="Loop" OffContent="Single" Margin="5"/>
-        </StackPanel>
+        <!-- Center Display -->
+        <Border Grid.Row="1" 
+                Background="#202020" 
+                CornerRadius="8" 
+                Margin="0,20" 
+                Padding="20">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10">
+                <TextBlock Text="{Binding CurrentTitle}" 
+                           FontSize="18" 
+                           Foreground="White"
+                           HorizontalAlignment="Center" 
+                           TextWrapping="Wrap"/>
+                
+                <TextBlock Text="{Binding TimestampText}" 
+                           FontSize="14" 
+                           Foreground="#AAAAAA"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
 
-        <Slider Grid.Row="4" Grid.Column="0" Minimum="0" Maximum="1" Value="{Binding Volume, Mode=TwoWay}" Margin="10" VerticalAlignment="Center"/>
-        <Slider Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding PlaybackProgress, Mode=OneWay}" Margin="10" IsEnabled="{Binding CurrentTrack}" Name="PlaybackProgress" />
-        <TextBlock Grid.Row="4" Grid.Column="2" Text="{Binding CurrentTrack.Title, FallbackValue='No Track Selected'}" Margin="10" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+        <!-- Progress Bar -->
+        <Slider Grid.Row="2" 
+                Value="{Binding SeekProgress}" 
+                Minimum="0" Maximum="1"
+                Margin="0,0,0,10"/>
+
+        <!-- Controls -->
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto">
+            
+            <!-- Volume -->
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="5">
+                <TextBlock Text="Vol" VerticalAlignment="Center"/>
+                <Slider Value="{Binding Volume}" 
+                        Minimum="0" Maximum="1" 
+                        Width="100"/>
+            </StackPanel>
+
+            <!-- Playback Buttons -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="20">
+                <Button Command="{Binding StopCommand}" Content="⏹" Width="40"/>
+                <Button Command="{Binding PlayPauseCommand}" 
+                        Content="{Binding IsPlaying, Converter={StaticResource PlayPauseLabelConverter}}" 
+                        Width="40" 
+                        FontWeight="Bold"/>
+            </StackPanel>
+            
+        </Grid>
     </Grid>
 </UserControl>

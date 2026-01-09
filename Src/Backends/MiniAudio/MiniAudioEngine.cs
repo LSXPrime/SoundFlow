@@ -1,6 +1,7 @@
 #define BROWSER
 
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
@@ -48,8 +49,7 @@ public sealed class MiniAudioEngine(
         InitializeDeviceInternal(nint.Zero, nint.Zero);
     }
 
-
-    private void InitializeDeviceInternal(nint playbackDeviceId, nint captureDeviceId)
+    private unsafe void InitializeDeviceInternal(nint playbackDeviceId, nint captureDeviceId)
     {
         if (_device != nint.Zero)
             CleanupCurrentDevice();
@@ -58,11 +58,12 @@ public sealed class MiniAudioEngine(
         
         Console.WriteLine("Allocating device config.");
         
-        // Get Delegate Function Pointer
-        var functionPointer = _audioCallback.Method.MethodHandle.GetFunctionPointer();
+        
+
+        delegate* unmanaged[Cdecl]<nint, nint, nint, uint, void> callbackPtr = &AudioCallbackStatic;
         
         var deviceConfig = Native.AllocateDeviceConfig((int)Capability, (int)SampleFormat, Channels, SampleRate,
-            Marshal.GetFunctionPointerForDelegate(_audioCallback),
+            (nint)callbackPtr,
             playbackDeviceId,
             captureDeviceId);
 
@@ -114,8 +115,17 @@ public sealed class MiniAudioEngine(
         _device = nint.Zero;
     }
 
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    private static void AudioCallbackStatic(nint device, nint output, nint input, uint length)
+    {
+        // We route the static call back to the singleton instance
+        if (Instance is MiniAudioEngine engine)
+        {
+            engine.AudioCallback(device, output, input, length);
+        }
+    }
 
-    private void AudioCallback(nint _, nint output, nint input, uint length)
+    private void AudioCallback(nint device, nint output, nint input, uint length)
     {
         var sampleCount = (int)length * Channels;
         if (Capability != Capability.Record) ProcessGraph(output, sampleCount);

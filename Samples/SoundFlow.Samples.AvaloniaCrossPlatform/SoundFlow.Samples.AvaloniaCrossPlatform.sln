@@ -9,10 +9,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SoundFlow.Samples.AvaloniaC
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SoundFlow.Samples.AvaloniaCrossPlatform.Browser", "SoundFlow.Samples.AvaloniaCrossPlatform.Browser\SoundFlow.Samples.AvaloniaCrossPlatform.Browser.csproj", "{1C1A049E-235C-4CD0-B6FA-D53AC418F4DA}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SoundFlow.Samples.AvaloniaCrossPlatform.iOS", "SoundFlow.Samples.AvaloniaCrossPlatform.iOS\SoundFlow.Samples.AvaloniaCrossPlatform.iOS.csproj", "{EBD9022F-BC83-4846-9A11-6F7F3772DC64}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SoundFlow.Samples.AvaloniaCrossPlatform.Android", "SoundFlow.Samples.AvaloniaCrossPlatform.Android\SoundFlow.Samples.AvaloniaCrossPlatform.Android.csproj", "{7AD1DAC8-7FBE-49D5-8614-7321233DB82E}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{3DA99C4E-89E3-4049-9C22-0A7EC60D83D8}"
 	ProjectSection(SolutionItems) = preProject
 		Directory.Build.props = Directory.Build.props
