@@ -389,7 +389,7 @@ internal static unsafe partial class Native
 #if BROWSER
     [DllImport(LibraryName, EntryPoint = "sf_allocate_device_config")]
     public static extern nint AllocateDeviceConfig(Capability capabilityType, uint sampleRate,
-        AudioCallback dataCallback, nint pSfConfig);
+        IntPtr dataCallback, nint pSfConfig);
 #else
     [LibraryImport(LibraryName, EntryPoint = "sf_allocate_device_config")]
     public static partial nint AllocateDeviceConfig(Capability capabilityType, uint sampleRate,
