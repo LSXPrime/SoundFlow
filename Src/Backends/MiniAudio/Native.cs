@@ -8,8 +8,13 @@ namespace SoundFlow.Backends.MiniAudio;
 
 internal static unsafe partial class Native
 {
-    private const string LibraryName = "miniaudio";
     
+#if BROWSER
+    private const string LibraryName = "libminiaudio";
+#else
+    private const string LibraryName = "miniaudio";
+#endif
+
     #region Delegates
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -177,7 +182,8 @@ internal static unsafe partial class Native
 
 #if BROWSER
     [DllImport(LibraryName, EntryPoint = "ma_encoder_init")]
-    public static extern MiniAudioResult EncoderInit(BufferProcessingCallback onRead, SeekCallback onSeekCallback, nint pUserData, nint pConfig, nint pEncoder);
+    public static extern MiniAudioResult EncoderInit(BufferProcessingCallback onRead, SeekCallback onSeekCallback,
+        nint pUserData, nint pConfig, nint pEncoder);
 #else
     [LibraryImport(LibraryName, EntryPoint = "ma_encoder_init", StringMarshalling = StringMarshalling.Utf8)]
     public static partial MiniAudioResult EncoderInit(BufferProcessingCallback onRead, SeekCallback onSeekCallback,
