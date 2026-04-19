@@ -9,6 +9,10 @@ using SoundFlow.Backends.MiniAudio.Devices;
 using SoundFlow.Backends.MiniAudio.Enums;
 using SoundFlow.Backends.MiniAudio.Structs;
 
+#if BROWSER
+using System.Runtime.CompilerServices;
+#endif
+
 namespace SoundFlow.Backends.MiniAudio;
 
 /// <summary>
@@ -20,7 +24,9 @@ public class MiniAudioEngine : AudioEngine
     private readonly List<AudioDevice> _activeDevices = [];
     private readonly MiniAudioBackend[]? _backendPriority;
 
+#if !BROWSER
     internal static readonly Native.AudioCallback DataCallback = OnAudioData;
+#endif
 
     private readonly ConcurrentDictionary<nint, MiniAudioDevice> _deviceMap = new();
     private static readonly ConcurrentDictionary<nint, GCHandle> ActiveEngineHandles = new();
@@ -114,9 +120,9 @@ public class MiniAudioEngine : AudioEngine
     }
 
 #if BROWSER
-    [UnmanagedCallersOnly]
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
 #endif
-    private static void OnAudioData(nint pDevice, nint pOutput, nint pInput, uint frameCount)
+    internal static void OnAudioData(nint pDevice, nint pOutput, nint pInput, uint frameCount)
     {
         // Look up the GCHandle using the native device pointer.
         if (!ActiveEngineHandles.TryGetValue(pDevice, out var engineHandle) ||
