@@ -20,20 +20,20 @@
         <ProjectReference Include="..\SoundFlow.Samples.AvaloniaCrossPlatform\SoundFlow.Samples.AvaloniaCrossPlatform.csproj"/>
     </ItemGroup>
     
-    <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-browser'">
+    <ItemGroup Condition="'$(RuntimeIdentifier)' == 'rowser-wasm'">
         <NativeFileReference Include="libminiaudio.a">
             <Source>miniaudio</Source>
             <Visible>false</Visible>
         </NativeFileReference>
     </ItemGroup>
 
-    <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-browser'">
+    <ItemGroup Condition="'$(RuntimeIdentifier)' == 'rowser-wasm'">
         <NativeLibrary Include="miniaudio">
             <Visible>false</Visible>
         </NativeLibrary>
     </ItemGroup>
     
-    <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-browser'">
+    <ItemGroup Condition="'$(RuntimeIdentifier)' == 'rowser-wasm'">
         <EmccExportedFunction Include="_sf_context_get_backend">
             <Visible>false</Visible>
         </EmccExportedFunction>
