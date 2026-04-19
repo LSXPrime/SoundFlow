@@ -113,13 +113,16 @@ public class MiniAudioEngine : AudioEngine
         InitializeBackend();
     }
 
+#if BROWSER
+    [UnmanagedCallersOnly]
+#endif
     private static void OnAudioData(nint pDevice, nint pOutput, nint pInput, uint frameCount)
     {
         // Look up the GCHandle using the native device pointer.
         if (!ActiveEngineHandles.TryGetValue(pDevice, out var engineHandle) ||
             engineHandle.Target is not MiniAudioEngine engine ||
             !engine._deviceMap.TryGetValue(pDevice, out var managedDevice)) return;
-        
+
         // Safely get the engine instance from the handle.
         managedDevice.Process(pOutput, pInput, frameCount);
     }
@@ -327,7 +330,7 @@ public class MiniAudioEngine : AudioEngine
 
         return newDevice;
     }
-    
+
     private void OnDeviceDisposing(object? sender, EventArgs e)
     {
         if (sender is AudioDevice device)
@@ -360,7 +363,7 @@ public class MiniAudioEngine : AudioEngine
 
         if (result != MiniAudioResult.Success)
             throw new InvalidOperationException($"Unable to get devices. MiniAudio result: {result}");
-        
+
         var playbackCount = (int)playbackCountUint;
         var captureCount = (int)captureCountUint;
 
@@ -373,7 +376,7 @@ public class MiniAudioEngine : AudioEngine
                 var nativePlayback = new DeviceInfoNative[playbackCount];
                 // 2. Read from pointer into native structs
                 pPlaybackDevices.ReadIntoArray(nativePlayback, playbackCount);
-                
+
                 // 3. Convert to public structs (Deep Copy)
                 PlaybackDevices = new DeviceInfo[playbackCount];
                 for (var i = 0; i < playbackCount; i++)
