@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using SoundFlow.Backends.MiniAudio.Enums;
 using SoundFlow.Enums;
 
@@ -41,23 +42,13 @@ private const string LibraryName = "__Internal"; // Nothing works, not "__Intern
 
     private static class NativeLibraryResolver
     {
+        
+        [UnsupportedOSPlatform("browser")]
         public static nint Resolve(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
         {
 
             // 1. Get the platform-specific library file name (e.g., "libminiaudio.so", "miniaudio.dll").
             var platformSpecificName = GetPlatformSpecificLibraryName(libraryName);
-            
-            // Handle Browser (WASM) specifically.
-            /*
-             * Actually throwing in browser console
-             * logging.ts:26  MONO_WASM: Exception marshalling result of JS promise to CS:  ExitStatusmessage: "Program terminated with exit(1)"name: "ExitStatus"silent: truestack: "Error\n    at Object.Me [as mono_exit] (https://localhost:5001/_framework/dotnet.js:3:18993)\n    at Fl.e.onAbort.e.onAbort (https://localhost:5001/_framework/dotnet.runtime.js:3:215571)\n    at abort (https://localhost:5001/_framework/dotnet.native.js:859:22)\n    at _dlopen (https://localhost:5001/_framework/dotnet.native.js:5296:7)\n    at SystemNative_GetDefaultSearchOrderPseudoHandle (https://localhost:5001/_framework/dotnet.native.wasm:wasm-function[27957]:0x8949aa)\n    at do_icall (https://localhost:5001/_framework/dotnet.native.wasm:wasm-function[16249]:0x637f86)\n    at do_icall_wrapper (https://localhost:5001/_framework/dotnet.native.wasm:wasm-function[16134]:0x632f0a)\n    at mono_interp_exec_method (https://localhost:5001/_framework/dotnet.native.wasm:wasm-function[16127]:0x624cf7)\n    at interp_runtime_invoke (https://localhost:5001/_framework/dotnet.native.wasm:wasm-function[16167]:0x63481f)\n    at mono_jit_runtime_invoke (https://localhost:5001/_framework/dotnet.native.wasm:wasm-function[20704]:0x749bee)"status: 1[[Prototype]]: Object
-pt @ logging.ts:26
-(anonymous) @ marshal-to-cs.ts:339
-             */
-            if (OperatingSystem.IsBrowser())
-            {
-                return NativeLibrary.GetMainProgramHandle();
-            }
 
             // 2. Try to load the library using its platform-specific name, allowing OS to find it in standard paths.
             if (NativeLibrary.TryLoad(platformSpecificName, assembly, searchPath, out var library))
