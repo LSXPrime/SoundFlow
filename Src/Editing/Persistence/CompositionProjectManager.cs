@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Reflection;
+using System.Runtime.Versioning;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
@@ -63,7 +64,7 @@ public static class CompositionProjectManager
                 ? JsonTypeInfoResolver.Combine(SoundFlowJsonContext.Default, customTypeResolver)
                 : SoundFlowJsonContext.Default
         };
-        
+
         var projectData = new ProjectData
         {
             ProjectFileVersion = options.ProjectFileVersion,
@@ -76,7 +77,8 @@ public static class CompositionProjectManager
                 { Time = m.Time, BeatsPerMinute = m.BeatsPerMinute }).ToList(),
             Modifiers = SerializeEffects(composition.Modifiers, jsonOptions),
             Analyzers = SerializeEffects(composition.Analyzers, jsonOptions),
-            MidiTargets = SerializeEffects(composition.MidiTargets.OfType<MidiTargetNode>().Select(n => n.Target), jsonOptions),
+            MidiTargets = SerializeEffects(composition.MidiTargets.OfType<MidiTargetNode>().Select(n => n.Target),
+                jsonOptions),
             MidiMappings = SerializeMappings(composition.MappingManager.Mappings)
         };
 
@@ -200,6 +202,7 @@ public static class CompositionProjectManager
         await File.WriteAllTextAsync(projectFilePath, json);
 
         // Signing Integration
+#if !BROWSER
         if (options.SigningConfiguration != null)
         {
             var sigResult = await FileAuthenticator.SignFileAsync(projectFilePath, options.SigningConfiguration);
@@ -213,6 +216,7 @@ public static class CompositionProjectManager
                 Log.Warning($"Failed to sign project file: {sigResult.Error?.Message}");
             }
         }
+#endif
 
         composition.ClearDirtyFlag();
     }
@@ -225,7 +229,9 @@ public static class CompositionProjectManager
     /// <param name="signatureFilePath">The path to the signature file (.sig). If null, defaults to projectFilePath + ".sig".</param>
     /// <param name="config">The signature configuration containing the Public Key.</param>
     /// <returns>A result containing true if the project is valid and authentic; otherwise, false or an error.</returns>
-    public static async Task<Result<bool>> VerifyProjectAsync(string projectFilePath, string? signatureFilePath, SignatureConfiguration config)
+    [UnsupportedOSPlatform("browser")]
+    public static async Task<Result<bool>> VerifyProjectAsync(string projectFilePath, string? signatureFilePath,
+        SignatureConfiguration config)
     {
         if (!File.Exists(projectFilePath))
             return new NotFoundError("File", $"Project file not found: {projectFilePath}");
@@ -435,8 +441,8 @@ public static class CompositionProjectManager
     /// <returns>A tuple containing the loaded Composition and a list of missing/unresolved source references.</returns>
     public static async Task<(Composition Composition, List<ProjectSourceReference> UnresolvedSources)>
         LoadProjectAsync(
-            AudioEngine engine, 
-            AudioFormat format, 
+            AudioEngine engine,
+            AudioFormat format,
             string projectFilePath,
             IJsonTypeInfoResolver? customTypeResolver = null)
     {
@@ -474,10 +480,13 @@ public static class CompositionProjectManager
         };
         composition.TempoTrack.Clear();
         composition.TempoTrack.AddRange(projectData.TempoTrack.Select(m => new TempoMarker(m.Time, m.BeatsPerMinute)));
-        composition.Modifiers.AddRange(DeserializeEffects<SoundModifier>(format, projectData.Modifiers, composition, jsonOptions));
-        composition.Analyzers.AddRange(DeserializeEffects<AudioAnalyzer>(format, projectData.Analyzers, composition, jsonOptions));
-        
-        var deserializedMidiControllables = DeserializeEffects<IMidiControllable>(format, projectData.MidiTargets, composition, jsonOptions);
+        composition.Modifiers.AddRange(
+            DeserializeEffects<SoundModifier>(format, projectData.Modifiers, composition, jsonOptions));
+        composition.Analyzers.AddRange(
+            DeserializeEffects<AudioAnalyzer>(format, projectData.Analyzers, composition, jsonOptions));
+
+        var deserializedMidiControllables =
+            DeserializeEffects<IMidiControllable>(format, projectData.MidiTargets, composition, jsonOptions);
         composition.MidiTargets.AddRange(deserializedMidiControllables.Select(c => new MidiTargetNode(c)));
 
 
@@ -579,9 +588,11 @@ public static class CompositionProjectManager
                     FadeOutCurve = projectSegment.Settings.FadeOutCurve,
                 };
                 segmentSettings.Modifiers.AddRange(
-                    DeserializeEffects<SoundModifier>(format, projectSegment.Settings.Modifiers, composition, jsonOptions));
+                    DeserializeEffects<SoundModifier>(format, projectSegment.Settings.Modifiers, composition,
+                        jsonOptions));
                 segmentSettings.Analyzers.AddRange(
-                    DeserializeEffects<AudioAnalyzer>(format, projectSegment.Settings.Analyzers, composition, jsonOptions));
+                    DeserializeEffects<AudioAnalyzer>(format, projectSegment.Settings.Analyzers, composition,
+                        jsonOptions));
 
                 var segment = new AudioSegment(
                     format,
@@ -649,19 +660,23 @@ public static class CompositionProjectManager
             if (midiTrack == null) continue;
 
             // Try to find the target in the internal list first.
-            var targetNode = composition.MidiTargets.FirstOrDefault(t => t.Name == projectMidiTrack.TargetComponentName);
+            var targetNode =
+                composition.MidiTargets.FirstOrDefault(t => t.Name == projectMidiTrack.TargetComponentName);
 
             // If not found, it might be a physical output device.
             if (targetNode == null)
             {
-                var outputDevice = engine.MidiOutputDevices.FirstOrDefault(d => d.Name == projectMidiTrack.TargetComponentName);
+                var outputDevice =
+                    engine.MidiOutputDevices.FirstOrDefault(d => d.Name == projectMidiTrack.TargetComponentName);
                 if (outputDevice.Name != null)
                 {
                     // This is complex. The MidiManager owns device nodes. We need a way to request one.
                     // For now, this part of linking is a known limitation if not an internal target.
-                    Log.Warning($"Could not find MIDI output device '{projectMidiTrack.TargetComponentName}' to link to track '{midiTrack.Name}'.");
+                    Log.Warning(
+                        $"Could not find MIDI output device '{projectMidiTrack.TargetComponentName}' to link to track '{midiTrack.Name}'.");
                 }
             }
+
             midiTrack.Target = targetNode;
         }
 
@@ -824,7 +839,8 @@ public static class CompositionProjectManager
     #endregion
 
     // Helper method to serialize modifiers/analyzers
-    private static List<ProjectEffectData> SerializeEffects<T>(IEnumerable<T?> effects, JsonSerializerOptions jsonOptions) where T : class
+    private static List<ProjectEffectData> SerializeEffects<T>(IEnumerable<T?> effects,
+        JsonSerializerOptions jsonOptions) where T : class
     {
         var effectDataList = new List<ProjectEffectData>();
         foreach (var effect in effects)
@@ -853,7 +869,8 @@ public static class CompositionProjectManager
                     if (value != null)
                     {
                         var propTypeInfo = jsonOptions.GetTypeInfo(prop.PropertyType);
-                        parameters[prop.Name] = JsonValue.Create(JsonSerializer.SerializeToElement(value, propTypeInfo));
+                        parameters[prop.Name] =
+                            JsonValue.Create(JsonSerializer.SerializeToElement(value, propTypeInfo));
                     }
                 }
                 catch (Exception ex)
@@ -897,7 +914,8 @@ public static class CompositionProjectManager
             var effectType = TypeRegistry.ResolveType(effectData.TypeName);
             if (effectType == null)
             {
-                Log.Warning($"Could not find effect type '{effectData.TypeName}'. Effect will be skipped. Ensure it is registered in TypeRegistry.");
+                Log.Warning(
+                    $"Could not find effect type '{effectData.TypeName}'. Effect will be skipped. Ensure it is registered in TypeRegistry.");
                 continue;
             }
 

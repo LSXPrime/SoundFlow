@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography;
+﻿using System.Runtime.Versioning;
+using System.Security.Cryptography;
 using SoundFlow.Security.Configuration;
 using SoundFlow.Structs;
 
@@ -8,6 +9,7 @@ namespace SoundFlow.Security;
 /// Provides methods to sign and verify files using ECDSA Digital Signatures.
 /// This ensures file authenticity and integrity at the binary container level.
 /// </summary>
+[UnsupportedOSPlatform("browser")]
 public static class FileAuthenticator
 {
     private const int BufferSize = 8192;

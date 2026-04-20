@@ -54,14 +54,17 @@ public class QueueDataProvider : ISoundDataProvider
     ///     This parameter is ignored if <paramref name="maxSamples"/> is null.
     /// </param>
     /// <exception cref="ArgumentOutOfRangeException">Thrown if sampleRate is not positive.</exception>
-    public QueueDataProvider(AudioFormat format, int? maxSamples = null, QueueFullBehavior fullBehavior = QueueFullBehavior.Throw)
+    public QueueDataProvider(AudioFormat format, int? maxSamples = null,
+        QueueFullBehavior fullBehavior = QueueFullBehavior.Throw)
     {
         if (format.SampleRate <= 0)
             throw new ArgumentOutOfRangeException(nameof(format), "Sample rate must be positive.");
-        
+
         if (!maxSamples.HasValue && fullBehavior != QueueFullBehavior.Throw)
-            throw new ArgumentException("QueueFullBehavior cannot be set to Block or Drop for a queue with no sample limit.", nameof(fullBehavior));
-        
+            throw new ArgumentException(
+                "QueueFullBehavior cannot be set to Block or Drop for a queue with no sample limit.",
+                nameof(fullBehavior));
+
         SampleRate = format.SampleRate;
         SampleFormat = format.Format;
         _maxSamples = maxSamples;
@@ -69,7 +72,7 @@ public class QueueDataProvider : ISoundDataProvider
     }
 
     #region Properties
-    
+
     /// <inheritdoc />
     public int Position { get; private set; }
 
@@ -104,18 +107,18 @@ public class QueueDataProvider : ISoundDataProvider
             }
         }
     }
-    
+
     /// <summary>
     ///     Gets the total number of samples enqueued so far.
     /// </summary>
     public long TotalSamplesEnqueued
     {
-        get 
-        { 
+        get
+        {
             lock (_lock)
             {
                 return _totalSamplesEnqueued;
-            } 
+            }
         }
     }
 
@@ -151,27 +154,34 @@ public class QueueDataProvider : ISoundDataProvider
                 switch (_fullBehavior)
                 {
                     case QueueFullBehavior.Throw:
-                        throw new InvalidOperationException("Adding these samples would exceed the maximum size of the queue.");
+                        throw new InvalidOperationException(
+                            "Adding these samples would exceed the maximum size of the queue.");
 
                     case QueueFullBehavior.Drop:
                         return; // Silently drop the samples and return.
 
                     case QueueFullBehavior.Block:
+#if BROWSER
+                        throw new NotSupportedException("QueueDataProvider does not support blocking in the browser.");
+#else
                         // Block until space is available for the entire sample block.
                         while (!IsDisposed && _sampleQueue.Count + samples.Length > _maxSamples.Value)
                         {
                             Monitor.Wait(_lock);
                         }
+
                         // Re-check disposed status after waking up.
                         ObjectDisposedException.ThrowIf(IsDisposed, this);
                         break;
+#endif
                 }
             }
-            
+
             foreach (var sample in samples)
             {
                 _sampleQueue.Enqueue(sample);
             }
+
             _totalSamplesEnqueued += samples.Length;
         }
     }
@@ -180,7 +190,7 @@ public class QueueDataProvider : ISoundDataProvider
     public int ReadBytes(Span<float> buffer)
     {
         if (IsDisposed || buffer.IsEmpty) return 0;
-        
+
         var samplesRead = 0;
         var shouldFireEndOfStream = false;
         var spaceWasFreed = false;
@@ -211,7 +221,7 @@ public class QueueDataProvider : ISoundDataProvider
                 shouldFireEndOfStream = true;
                 _endOfStreamFired = true;
             }
-            
+
             // If space was freed, notify any waiting producer threads.
             if (spaceWasFreed)
             {
@@ -224,6 +234,12 @@ public class QueueDataProvider : ISoundDataProvider
         if (shouldFireEndOfStream) EndOfStreamReached?.Invoke(this, EventArgs.Empty);
 
         return samplesRead;
+    }
+
+    // <inheritdoc/>
+    public Task<int> ReadBytesAsync(Span<float> buffer)
+    {
+        throw new NotImplementedException();
     }
 
     /// <summary>
@@ -241,7 +257,7 @@ public class QueueDataProvider : ISoundDataProvider
             _totalSamplesEnqueued = 0;
             _isAddingCompleted = false;
             _endOfStreamFired = false;
-            
+
             // Wake up any threads that were blocked, as the queue is now empty.
             Monitor.PulseAll(_lock);
         }
@@ -261,17 +277,18 @@ public class QueueDataProvider : ISoundDataProvider
     }
 
     /// <inheritdoc />
-    public void Seek(int offset) => throw new InvalidOperationException("Seeking is not supported by the QueueDataProvider.");
+    public void Seek(int offset) =>
+        throw new InvalidOperationException("Seeking is not supported by the QueueDataProvider.");
 
     /// <inheritdoc />
     public void Dispose()
     {
         if (IsDisposed) return;
-        
+
         lock (_lock)
         {
             if (IsDisposed) return;
-            
+
             IsDisposed = true;
             _sampleQueue.Clear();
 

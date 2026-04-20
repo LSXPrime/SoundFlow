@@ -1,10 +1,12 @@
-﻿using SoundFlow.Security.Utils;
+﻿using System.Runtime.Versioning;
+using SoundFlow.Security.Utils;
 
 namespace SoundFlow.Security.Configuration;
 
 /// <summary>
 /// Configuration settings for digital signature operations (signing and verification).
 /// </summary>
+[UnsupportedOSPlatform("browser")]
 public class SignatureConfiguration
 {
     /// <summary>

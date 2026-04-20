@@ -9,7 +9,7 @@ namespace SoundFlow.Backends.MiniAudio.Devices;
 
 internal delegate void OnProcessCallback(nint pOutput, nint pInput, uint frameCount, MiniAudioDevice device);
 
-internal sealed class MiniAudioDevice : IDisposable
+internal sealed unsafe class MiniAudioDevice : IDisposable
 {
     private readonly nint _device;
     private readonly OnProcessCallback _onProcess;
@@ -24,7 +24,7 @@ internal sealed class MiniAudioDevice : IDisposable
     {
         if (config is not MiniAudioDeviceConfig miniAudioDeviceConfig)
             throw new ArgumentException($"config must be of type {typeof(MiniAudioDeviceConfig)}");
-        
+
         Info = info;
         Format = format;
         _onProcess = onProcess;
@@ -41,12 +41,24 @@ internal sealed class MiniAudioDevice : IDisposable
             var pSfConfig = MarshalConfig(
                 miniAudioDeviceConfig, configHandles);
 
+#if BROWSER
+            var callback = (delegate* unmanaged[Cdecl]<nint, nint, nint, uint, void>)&MiniAudioEngine.OnAudioData;
+            var pointer = (IntPtr)callback;
+
+            var deviceConfig = Native.AllocateDeviceConfig(
+                Capability,
+                (uint)Format.SampleRate,
+                pointer,
+                pSfConfig
+            );
+#else
             var deviceConfig = Native.AllocateDeviceConfig(
                 Capability,
                 (uint)Format.SampleRate,
                 MiniAudioEngine.DataCallback,
                 pSfConfig
             );
+#endif
 
             _device = Native.AllocateDevice();
             var result = Native.DeviceInit(context, deviceConfig, _device);
@@ -55,9 +67,10 @@ internal sealed class MiniAudioDevice : IDisposable
             if (result != MiniAudioResult.Success)
             {
                 Native.Free(_device);
-                throw new InvalidOperationException($"Unable to init device {info?.Name ?? "Default Device"}. Result: {result}");
+                throw new InvalidOperationException(
+                    $"Unable to init device {info?.Name ?? "Default Device"}. Result: {result}");
             }
-            
+
             MiniAudioEngine.RegisterEngineHandle(_device, Engine);
         }
         finally
@@ -188,7 +201,7 @@ internal sealed class MiniAudioDevice : IDisposable
     public void Dispose()
     {
         Stop();
-        
+
         // Remove the device from the engine's instance map.
         Engine.UnregisterDevice(_device);
         MiniAudioEngine.UnregisterEngineHandle(_device);

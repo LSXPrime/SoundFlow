@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Runtime.Versioning;
 using System.Text;
 using SoundFlow.Abstracts;
 using SoundFlow.Enums;
@@ -120,6 +121,12 @@ public sealed class NetworkDataProvider : ISoundDataProvider
     }
 
     /// <inheritdoc />
+    public Task<int> ReadBytesAsync(Span<float> buffer)
+    {
+        throw new NotImplementedException();
+    }
+
+    /// <inheritdoc />
     public int ReadBytes(Span<float> buffer)
     {
         if (IsDisposed) return 0;
@@ -233,6 +240,8 @@ internal abstract class NetworkDataProviderBase(AudioEngine engine, AudioFormat?
 
     public abstract Task InitializeAsync();
     
+    public abstract Task<int> ReadBytesAsync(Span<float> buffer);
+    [UnsupportedOSPlatform("browser")]
     public abstract int ReadBytes(Span<float> buffer);
     public abstract void Seek(int sampleOffset);
     
@@ -297,7 +306,7 @@ internal sealed class DirectStreamProvider(AudioEngine engine, AudioFormat? form
             _stream = bufferedStream;
         }
 
-        var formatInfoResult = SoundMetadataReader.Read(_stream, readOptions);
+        var formatInfoResult = await SoundMetadataReader.ReadAsync(_stream, readOptions);
 
         if (formatInfoResult is { IsSuccess: true, Value: not null })
         {
@@ -332,6 +341,11 @@ internal sealed class DirectStreamProvider(AudioEngine engine, AudioFormat? form
         SampleRate = _decoder.SampleRate;
         Length = FormatInfo != null ? (int)(FormatInfo.Duration.TotalSeconds * SampleRate * FormatInfo.ChannelCount) : _decoder.Length;
         CanSeek = _stream.CanSeek;
+    }
+
+    public override Task<int> ReadBytesAsync(Span<float> buffer)
+    {
+        throw new NotImplementedException();
     }
 
     public override int ReadBytes(Span<float> buffer)
@@ -420,8 +434,12 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat? format,
         // Start background buffering
         _ = BufferHlsStreamAsync(_cancellationTokenSource.Token);
     }
-    
-    
+
+    public override Task<int> ReadBytesAsync(Span<float> buffer)
+    {
+        throw new NotImplementedException();
+    }
+
     private async Task DetermineSegmentFormatAsync(CancellationToken cancellationToken)
     {
         var firstSegmentUrl = _hlsSegments[0].Uri;
@@ -728,7 +746,7 @@ internal sealed class BufferedNetworkStream(int bufferSize = 1 * 1024 * 1024) : 
                     var bytesRead = await sourceStream.ReadAsync(tempBuffer, _cts.Token);
                     if (bytesRead == 0) break; // End of network stream
                     
-                    Write(tempBuffer, 0, bytesRead);
+                    await WriteAsync(tempBuffer, 0, bytesRead);
                 }
 
                 if (!_cts.IsCancellationRequested) SignalCompletion();
@@ -746,6 +764,34 @@ internal sealed class BufferedNetworkStream(int bufferSize = 1 * 1024 * 1024) : 
         });
     }
 
+    // TODO: Add semaphore instead of lock
+    public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+    {
+        while (_bytesAvailable == 0 && _state == DownloadState.Buffering && !_isDisposed)
+            await Task.Delay(10, cancellationToken);
+        
+        if (_bytesAvailable == 0) return 0;
+        
+        var bytesToRead = Math.Min(count, _bytesAvailable);
+        
+        // Read from circular buffer
+        var firstChunkSize = Math.Min(bytesToRead, _buffer.Length - _readPosition);
+        Buffer.BlockCopy(_buffer, _readPosition, buffer, offset, firstChunkSize);
+        _readPosition = (_readPosition + firstChunkSize) % _buffer.Length;
+
+        if (firstChunkSize < bytesToRead)
+        {
+            var secondChunkSize = bytesToRead - firstChunkSize;
+            Buffer.BlockCopy(_buffer, _readPosition, buffer, offset + firstChunkSize, secondChunkSize);
+            _readPosition = (_readPosition + secondChunkSize) % _buffer.Length;
+        }
+            
+        _bytesAvailable -= bytesToRead;
+        Monitor.PulseAll(_lock); // Signal producer that space is available
+        return bytesToRead;
+    }
+
+    [UnsupportedOSPlatform("browser")]
     public override int Read(byte[] buffer, int offset, int count)
     {
         lock (_lock)
@@ -772,11 +818,32 @@ internal sealed class BufferedNetworkStream(int bufferSize = 1 * 1024 * 1024) : 
             }
             
             _bytesAvailable -= bytesToRead;
-            Monitor.PulseAll(_lock); // Signal producer that space is available
             return bytesToRead;
         }
     }
 
+    public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+    {
+        if (count == 0) return Task.CompletedTask;
+        if (_isDisposed) return Task.CompletedTask;
+        
+        // Write to circular buffer
+        var firstChunkSize = Math.Min(count, _buffer.Length - _writePosition);
+        Buffer.BlockCopy(buffer, offset, _buffer, _writePosition, firstChunkSize);
+        _writePosition = (_writePosition + firstChunkSize) % _buffer.Length;
+
+        if (firstChunkSize < count)
+        {
+            var secondChunkSize = count - firstChunkSize;
+            Buffer.BlockCopy(buffer, offset + firstChunkSize, _buffer, _writePosition, secondChunkSize);
+            _writePosition = (_writePosition + secondChunkSize) % _buffer.Length;
+        }
+
+        _bytesAvailable += count;
+        return Task.CompletedTask;
+    }
+
+    [UnsupportedOSPlatform("browser")]
     public override void Write(byte[] buffer, int offset, int count)
     {
         if (count == 0) return;

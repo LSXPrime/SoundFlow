@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography;
+﻿using System.Runtime.Versioning;
+using System.Security.Cryptography;
 using SoundFlow.Security.Configuration;
 
 namespace SoundFlow.Security.Utils;
@@ -7,6 +8,7 @@ namespace SoundFlow.Security.Utils;
 /// <summary>
 /// Utility for generating secure ECDSA key pairs for file signing.
 /// </summary>
+[UnsupportedOSPlatform("browser")]
 public static class SignatureKeyGenerator
 {
     /// <summary>

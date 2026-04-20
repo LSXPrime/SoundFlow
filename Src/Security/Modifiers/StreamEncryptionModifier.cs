@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
+using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using SoundFlow.Abstracts;
 using SoundFlow.Security.Configuration;
@@ -21,6 +22,7 @@ namespace SoundFlow.Security.Modifiers;
 /// for maintaining the sample-count synchronization of the audio engine.
 /// </para>
 /// </remarks>
+[UnsupportedOSPlatform("browser")]
 public sealed class StreamEncryptionModifier : SoundModifier, IDisposable
 {
     private readonly Aes _aes;
@@ -45,7 +47,7 @@ public sealed class StreamEncryptionModifier : SoundModifier, IDisposable
         
         if (config.Iv.Length != 12 && config.Iv.Length != 16)
             throw new ArgumentException("AES-CTR recommends a 12-byte nonce or 16-byte IV.", nameof(config));
-
+        
         _aes = Aes.Create();
         _aes.KeySize = 256;
         _aes.Key = config.Key;
