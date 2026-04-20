@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 using SoundFlow.Interfaces;
@@ -15,6 +16,7 @@ namespace SoundFlow.Security;
 /// <summary>
 /// Provides high-level methods to encrypt and decrypt audio using the <see cref="SecureAudioContainer"/> format.
 /// </summary>
+[UnsupportedOSPlatform("browser")]
 public static class AudioEncryptor
 {
     private const int BufferSize = 8192; // 8KB buffer

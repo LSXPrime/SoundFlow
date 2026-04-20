@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using SoundFlow.Enums;
 using SoundFlow.Metadata.Models;
 
@@ -8,6 +9,18 @@ namespace SoundFlow.Interfaces;
 /// </summary>
 public interface ISoundDataProvider : IDisposable
 {
+
+    /// <summary>
+    /// 
+    /// </summary>
+    [UnsupportedOSPlatform("browser")]
+    public void Initialize();
+    
+    /// <summary>
+    /// 
+    /// </summary>
+    public void InitializeAsync();
+    
     /// <summary>
     ///     Gets the current playback position in samples.
     /// </summary>
@@ -53,7 +66,18 @@ public interface ISoundDataProvider : IDisposable
     ///     A task representing the asynchronous read operation. The task result contains the number of bytes actually
     ///     read. May be less than the requested number if the end of the data is reached.
     /// </returns>
+    [UnsupportedOSPlatform("browser")]
     int ReadBytes(Span<float> buffer);
+    
+    /// <summary>
+    ///     Reads the specified number of audio bytes into the given buffer asynchronously.
+    /// </summary>
+    /// <param name="buffer">The buffer to write the bytes to.</param>
+    /// <returns>
+    ///     A task representing the asynchronous read operation. The task result contains the number of bytes actually
+    ///     read. May be less than the requested number if the end of the data is reached.
+    /// </returns>
+    Task<int> ReadBytesAsync(Span<float> buffer);
 
     /// <summary>
     ///     Sets the playback position to the specified sample offset.

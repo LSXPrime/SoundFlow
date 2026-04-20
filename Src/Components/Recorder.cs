@@ -60,30 +60,31 @@ public class Recorder : IDisposable
     /// This is used when recording directly to memory or for custom processing, instead of to a file.
     /// </summary>
     public AudioProcessCallback? ProcessCallback;
-    
+
     /// <summary>
     /// Gets or sets the configuration for digitally signing the recorded file.
     /// If set, a detached signature file (.sig) will be generated upon stopping the recording.
     /// Only applies when recording to a file.
     /// </summary>
     public SignatureConfiguration? SigningConfiguration { get; set; }
-    
+
     private readonly AudioCaptureDevice _captureDevice;
     private ISoundEncoder? _encoder;
     private readonly List<SoundModifier> _modifiers = [];
     private readonly List<AudioAnalyzer> _analyzers = [];
     private readonly AudioEngine _engine;
     private readonly AudioFormat _format;
-    
+
     private SoundTags? _tagsToWrite;
-    
+
     /// <summary>
     /// Initializes a new instance of the <see cref="Recorder"/> class to record audio to a file.
     /// </summary>
     /// <param name="captureDevice">The capture device to record from.</param>
     /// <param name="filePath">The final destination path for the recorded audio file.</param>
     /// <param name="formatId">The string identifier for the desired encoding format (e.g., "wav", "flac"). Defaults to "wav".</param>
-    public Recorder(AudioCaptureDevice captureDevice, string filePath, string formatId = "wav") : this(captureDevice, new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None), formatId)
+    public Recorder(AudioCaptureDevice captureDevice, string filePath, string formatId = "wav") : this(captureDevice,
+        new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None), formatId)
     {
         FilePath = filePath;
     }
@@ -101,7 +102,7 @@ public class Recorder : IDisposable
         {
             throw new ArgumentException("The provided stream is not writable.", nameof(stream));
         }
-        
+
         _captureDevice = captureDevice;
         _engine = captureDevice.Engine;
         SampleFormat = captureDevice.Format.Format;
@@ -128,7 +129,7 @@ public class Recorder : IDisposable
         FormatId = string.Empty; // No encoding format needed for callback mode.
         _format = captureDevice.Format;
     }
-    
+
     /// <summary>
     /// Gets a read-only list of <see cref="SoundModifier"/> components applied to the recorder.
     /// </summary>
@@ -215,7 +216,7 @@ public class Recorder : IDisposable
         _encoder?.Dispose();
         _encoder = null;
         State = PlaybackState.Stopped;
-        
+
         try
         {
             await Stream.DisposeAsync();
@@ -243,6 +244,7 @@ public class Recorder : IDisposable
                 }
 
                 // 2. Sign File (Authentic Recording)
+#if !BROWSER
                 if (SigningConfiguration != null)
                 {
                     var signResult = await FileAuthenticator.SignFileAsync(FilePath, SigningConfiguration);
@@ -265,16 +267,17 @@ public class Recorder : IDisposable
                         return new IoError($"writing signature file to '{sigPath}'", ex);
                     }
                 }
+#endif
             }
         }
         finally
         {
             _tagsToWrite = null;
         }
-        
+
         return Result.Ok();
     }
-    
+
     /// <summary>
     /// Synchronously stops the recording process.
     /// </summary>
@@ -340,7 +343,7 @@ public class Recorder : IDisposable
         // Process analyzers
         foreach (var analyzer in _analyzers)
         {
-             analyzer.Process(samples, Channels);
+            analyzer.Process(samples, Channels);
         }
 
         // Pass samples

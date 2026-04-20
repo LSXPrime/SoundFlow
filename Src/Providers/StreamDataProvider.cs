@@ -25,7 +25,7 @@ public sealed class StreamDataProvider : ISoundDataProvider
     /// <param name="options">Optional configuration for metadata reading.</param>
     public StreamDataProvider(AudioEngine engine, Stream stream, ReadOptions? options = null)
     {
-        _stream = stream ?? throw new ArgumentNullException(nameof(stream));
+        ArgumentNullException.ThrowIfNull(stream);
         options ??= new ReadOptions();
 
         var formatInfoResult = SoundMetadataReader.Read(_stream, options);
@@ -76,7 +76,7 @@ public sealed class StreamDataProvider : ISoundDataProvider
     /// <param name="stream">The stream to read audio data from.</param>
     public StreamDataProvider(AudioEngine engine, AudioFormat format, Stream stream)
     {
-        _stream = stream ?? throw new ArgumentNullException(nameof(stream));
+        ArgumentNullException.ThrowIfNull(stream);
         
         var formatInfoResult = SoundMetadataReader.Read(_stream, new ReadOptions
         {
@@ -145,6 +145,12 @@ public sealed class StreamDataProvider : ISoundDataProvider
     /// <inheritdoc />
     public event EventHandler<PositionChangedEventArgs>? PositionChanged;
 
+    /// <inheritdoc />
+    public Task<int> ReadBytesAsync(Span<float> buffer)
+    {
+        throw new NotImplementedException();
+    }
+    
     /// <inheritdoc />
     public int ReadBytes(Span<float> buffer)
     {

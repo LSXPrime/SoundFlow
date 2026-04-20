@@ -168,6 +168,12 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
     public event EventHandler<PositionChangedEventArgs>? PositionChanged;
 
     /// <inheritdoc />
+    public Task<int> ReadBytesAsync(Span<float> buffer)
+    {
+        throw new NotImplementedException();
+    }
+    
+    /// <inheritdoc />
     public int ReadBytes(Span<float> buffer)
     {
         if (IsDisposed) return 0;

@@ -43,9 +43,10 @@
         <None Include="..\logo.png" Pack="true" PackagePath="" />
         <None Include="SoundFlow.targets" Pack="true" PackagePath="" />
     </ItemGroup>
-
-    <ItemGroup>
-      <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
-    </ItemGroup>
+    
+    <Target Name="BuildMiniaudioNative" BeforeTargets="Build" 
+            Condition="'$(RuntimeIdentifier)' == 'browser-wasm'">
+                
+    </Target>
 
 </Project>

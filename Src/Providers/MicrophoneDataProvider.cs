@@ -135,6 +135,12 @@ public class MicrophoneDataProvider : ISoundDataProvider
             }
         }
     }
+    
+    /// <inheritdoc />
+    public Task<int> ReadBytesAsync(Span<float> buffer)
+    {
+        throw new NotImplementedException();
+    }
 
     /// <inheritdoc />
     public int ReadBytes(Span<float> buffer)

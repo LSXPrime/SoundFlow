@@ -139,6 +139,12 @@ public class RawDataProvider : ISoundDataProvider
         return samplesActuallyRead;
     }
 
+    // <inheritdoc/>
+    public Task<int> ReadBytesAsync(Span<float> buffer)
+    {
+        throw new NotImplementedException();
+    }
+
     /// <inheritdoc />
     /// <exception cref="ObjectDisposedException">Thrown if the provider has been disposed.</exception>
     /// <exception cref="NotSupportedException">Thrown if seeking is not supported on the underlying PCM stream.</exception>

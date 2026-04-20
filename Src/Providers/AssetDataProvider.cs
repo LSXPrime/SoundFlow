@@ -164,6 +164,12 @@ public sealed class AssetDataProvider : ISoundDataProvider
     public event EventHandler<PositionChangedEventArgs>? PositionChanged;
 
     /// <inheritdoc />
+    public Task<int> ReadBytesAsync(Span<float> buffer)
+    {
+        throw new NotImplementedException();
+    }
+    
+    /// <inheritdoc />
     public int ReadBytes(Span<float> buffer)
     {
         if (IsDisposed || _data is null) return 0;
