@@ -112,7 +112,28 @@ internal sealed class FFmpegDecoder : ISoundDecoder
 
         var frameIndex = sampleOffset / Channels;
         var result = FFmpeg.SeekToPcmFrame(_handle, frameIndex, out long resultFrameIndex);
-        return result == FFmpegResult.Success;
+
+        if (result == FFmpegResult.Success)
+        {
+            if(resultFrameIndex >= 0)
+            {
+                // Compute how many samples to skip
+                var toSkip = (int)(frameIndex - resultFrameIndex);
+
+                if(toSkip > 0)
+                {
+                    // TODO!!! This could probably be optimized, but this is the quickest way to add this
+                    Span<float> dummySamples = stackalloc float[toSkip * Channels];
+
+                    // Dummy decode samples to skip them so we are at exact location we want
+                    Decode(dummySamples);
+                }
+            }
+
+            return true;
+        }
+        else
+            return false;
     }
 
     private unsafe nuint OnRead(IntPtr pUserData, IntPtr pBuffer, nuint bytesToRead)
