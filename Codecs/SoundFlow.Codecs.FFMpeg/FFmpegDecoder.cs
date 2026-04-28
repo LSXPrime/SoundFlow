@@ -111,7 +111,7 @@ internal sealed class FFmpegDecoder : ISoundDecoder
         if (IsDisposed || !_stream.CanSeek) return false;
 
         var frameIndex = sampleOffset / Channels;
-        var result = FFmpeg.SeekToPcmFrame(_handle, frameIndex);
+        var result = FFmpeg.SeekToPcmFrame(_handle, frameIndex, out long resultFrameIndex);
         return result == FFmpegResult.Success;
     }
 

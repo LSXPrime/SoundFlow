@@ -305,7 +305,7 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
     return SF_RESULT_SUCCESS;
 }
 
-SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_t frameIndex) {
+SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_t frameIndex, int64_t* resultFrameIndex) {
     if (!decoder || !decoder->format_ctx || decoder->stream_index < 0) return SF_RESULT_ERROR_INVALID_ARGS;
 
     AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
@@ -317,19 +317,28 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
 
     int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, timestamp, AVSEEK_FLAG_BACKWARD);
     if (ret < 0) {
+        *resultFrameIndex = -1;
         return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
     }
 
     // Read and discard packets until we reach the desired position
+    int64_t packetTimestamp = -1;
+
     AVPacket* pkt = av_packet_alloc();
     while (av_read_frame(decoder->format_ctx, pkt) >= 0) {
         if (pkt->stream_index == decoder->stream_index) {
+            packetTimestamp = pkt->pts;
             av_packet_unref(pkt);
             break;
         }
         av_packet_unref(pkt);
     }
     av_packet_free(&pkt);
+
+    if (packetTimestamp >= 0)
+        resultFrameIndex = av_rescale_q(packetTimestamp, stream->time_base, (AVRational) { 1, stream->codecpar->sample_rate });
+    else
+        resultFrameIndex = -1;
 
     return SF_RESULT_SUCCESS;
 }

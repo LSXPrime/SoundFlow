@@ -194,7 +194,7 @@ internal static partial class FFmpeg
     public static partial FFmpegResult ReadPcmFrames(SafeDecoderHandle decoder, IntPtr pFramesOut, long frameCount, out long outFramesRead);
 
     [LibraryImport(LibraryName, EntryPoint = "sf_decoder_seek_to_pcm_frame")]
-    public static partial FFmpegResult SeekToPcmFrame(SafeDecoderHandle decoder, long frameIndex);
+    public static partial FFmpegResult SeekToPcmFrame(SafeDecoderHandle decoder, long frameIndex, out long resultFrameIndex);
 
     [LibraryImport(LibraryName, EntryPoint = "sf_decoder_free")]
     public static partial void FreeDecoder(IntPtr decoder);
