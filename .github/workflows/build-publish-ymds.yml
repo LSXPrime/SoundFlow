@@ -1,0 +1,44 @@
+name: 'YDMS-specific build pipeline'
+
+on:
+  push:
+  workflow_dispatch:
+  pull_request:
+  release:
+    types:
+      - published
+
+jobs:
+  build-solution:
+    name: 'Build solution and publish'
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        project:
+          - 'Src/SoundFlow.csproj'
+          - 'Midi/SoundFlow.Midi.PortMidi/SoundFlow.Midi.PortMidi.csproj'
+          - 'Extensions/SoundFlow.Extensions.WebRtc.Apm/SoundFlow.Extensions.WebRtc.Apm.csproj'
+          - 'Codecs/SoundFlow.Codecs.FFMpeg/SoundFlow.Codecs.FFMpeg.csproj'
+
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: 'Build NuGet'
+        uses: Yellow-Dog-Man/composite-actions-templates/.github/actions/dotnet-build@9ecab12bbf1b40d14409bbaa13cb4f2ddb1ceb60 # main
+        with:
+          dotnet-build-args: '-p:Version=${{ github.ref_name }} -o nupkgs'
+          dotnet-project-path: '${{ matrix.project }}'
+          dotnet-build-type: 'pack'
+
+      - name: 'Upload artifacts'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: 'nupkgs/*'
+
+      - name: 'Push NuGet'
+        if: ${{ github.event_name == 'release' && github.event.action == 'published' }}
+        uses: Yellow-Dog-Man/composite-actions-templates/.github/actions/dotnet-build-push-nuget@9ecab12bbf1b40d14409bbaa13cb4f2ddb1ceb60 # main
+        with:
+          dotnet-nuget-auth-token: ${{ secrets.NUGET_TOKEN }}

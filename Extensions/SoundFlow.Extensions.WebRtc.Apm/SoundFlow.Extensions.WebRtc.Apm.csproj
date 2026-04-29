@@ -19,6 +19,7 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <Version>1.4.0</Version>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <PackageId>YellowDogMan.SoundFlow.Extensions.WebRtc.Apm</PackageId>
     </PropertyGroup>
 
     <ItemGroup>

@@ -21,6 +21,7 @@
         <PackageReleaseNotes>https://github.com/LSXPrime/SoundFlow/releases</PackageReleaseNotes>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <Company>LSXPrime</Company>
+        <PackageId>YellowDogMan.SoundFlow</PackageId>
     </PropertyGroup>
 
     <ItemGroup>

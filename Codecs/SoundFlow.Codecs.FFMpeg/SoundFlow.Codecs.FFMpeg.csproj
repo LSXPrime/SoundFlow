@@ -22,6 +22,7 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageReleaseNotes>https://github.com/LSXPrime/SoundFlow/releases</PackageReleaseNotes>
         <Company>LSXPrime</Company>
+        <AssemblyName>YellowDogMan.SoundFlow.Codecs.FFMpeg</AssemblyName>
     </PropertyGroup>
 
     <ItemGroup>
