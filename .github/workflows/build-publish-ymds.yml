@@ -21,6 +21,9 @@ jobs:
           - 'Extensions/SoundFlow.Extensions.WebRtc.Apm/SoundFlow.Extensions.WebRtc.Apm.csproj'
           - 'Codecs/SoundFlow.Codecs.FFMpeg/SoundFlow.Codecs.FFMpeg.csproj'
 
+    env:
+      IS_RELEASE: ${{ github.event_name == 'release' && github.event.action == 'published' }}
+
     steps:
       - name: 'Checkout repository'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -28,7 +31,7 @@ jobs:
       - name: 'Build NuGet'
         uses: Yellow-Dog-Man/composite-actions-templates/.github/actions/dotnet-build@9ecab12bbf1b40d14409bbaa13cb4f2ddb1ceb60 # main
         with:
-          dotnet-build-args: '-p:Version=${{ github.ref_name }} -o nupkgs'
+          dotnet-build-args: ${{ env.IS_RELEASE == 'true' && '-p:Version=${{ github.ref_name }} -o nupkgs' || '-o nupkgs' }}
           dotnet-project-path: '${{ matrix.project }}'
           dotnet-build-type: 'pack'
 
@@ -38,7 +41,7 @@ jobs:
           path: 'nupkgs/*'
 
       - name: 'Push NuGet'
-        if: ${{ github.event_name == 'release' && github.event.action == 'published' }}
+        if: ${{ env.IS_RELEASE == 'true' }}
         uses: Yellow-Dog-Man/composite-actions-templates/.github/actions/dotnet-build-push-nuget@9ecab12bbf1b40d14409bbaa13cb4f2ddb1ceb60 # main
         with:
           dotnet-nuget-auth-token: ${{ secrets.NUGET_TOKEN }}
