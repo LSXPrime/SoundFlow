@@ -336,7 +336,7 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
 
                 // Next step: we need to provide side data to our packet,
                 // and it will tell the codec to drop frames.
-                uint8_t* data = av_packet_get_side_data(pkt, AV_PKT_DATA_SKIP_SAMPLES, nullptr);
+                uint8_t* data = av_packet_get_side_data(pkt, AV_PKT_DATA_SKIP_SAMPLES, 0);
                 if (!data) {
                     data = av_packet_new_side_data(pkt, AV_PKT_DATA_SKIP_SAMPLES, 10);
                 }
