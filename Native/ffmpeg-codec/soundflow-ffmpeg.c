@@ -328,11 +328,8 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
             // Solution from: https://stackoverflow.com/questions/53015621/ffmpeg-library-how-to-precisely-seek-in-an-audio-file
 
             if (pkt->pts > 0 && timestamp > 0 && pkt->pts < timestamp) {
-                auto stream = decoder->format_ctx->streams[pkt->stream_index];
 
-                // Conversion from delta timestamp to frames.
-                auto time_delta = (float)(timestamp - pkt->pts) / stream->time_base.den;
-                int64_t skip_frames = time_delta * decoder->codec_ctx->time_base.den / decoder->codec_ctx->time_base.num;
+                int64_t skip_frames = timestamp - pkt->pts;
 
                 // Next step: we need to provide side data to our packet,
                 // and it will tell the codec to drop frames.
