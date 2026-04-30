@@ -331,7 +331,7 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
                 auto stream = decoder->format_ctx->streams[pkt->stream_index];
 
                 // Conversion from delta timestamp to frames.
-                auto time_delta = static_cast<float>(timestamp - pkt->pts) / stream->time_base.den;
+                auto time_delta = (float)(timestamp - pkt->pts) / stream->time_base.den;
                 int64_t skip_frames = time_delta * decoder->codec_ctx->time_base.den / decoder->codec_ctx->time_base.num;
 
                 // Next step: we need to provide side data to our packet,
@@ -343,7 +343,7 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
 
                 // Define parameters of side data. You can check them here:
                 // https://ffmpeg.org/doxygen/trunk/group__lavc__packet.html#ga9a80bfcacc586b483a973272800edb97
-                *reinterpret_cast<uint32_t*>(data) = skip_frames;
+                *((uint32_t*)(data)) = skip_frames;
                 data[8] = 0;
             }
 
