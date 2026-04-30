@@ -327,7 +327,7 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
     AVPacket* pkt = av_packet_alloc();
     while (av_read_frame(decoder->format_ctx, pkt) >= 0) {
         if (pkt->stream_index == decoder->stream_index) {
-            packetTimestamp = pkt->pts + decoder->format_ctx->start_time;
+            packetTimestamp = pkt->pts - decoder->format_ctx->start_time;
             av_packet_unref(pkt);
             break;
         }
