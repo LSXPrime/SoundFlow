@@ -288,9 +288,16 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
 
                 if (decoder->seek_pending) {
 
-                    if (decoder->packet->pts < decoder->seek_timestamp)
+                    int64_t pts = decoder->packet->pts;
+                    
+                    // Some codecs seem to have "preamble" packets that have negative pts (like -128), but the samples are actually
+                    // at 0 from testing. So we consider anything under 0 as being 0 pts which seems to work
+                    if (pts < 0)
+                        pts = 0;
+
+                    if (pts < decoder->seek_timestamp)
                     {
-                        int64_t skip_frames = decoder->seek_timestamp - decoder->packet->pts;
+                        int64_t skip_frames = decoder->seek_timestamp - pts;
 
                         // Next step: we need to provide side data to our packet,
                         // and it will tell the codec to drop frames.
