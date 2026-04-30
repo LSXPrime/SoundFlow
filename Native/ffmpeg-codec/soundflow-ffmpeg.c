@@ -286,25 +286,29 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
 
                 // Solution from: https://stackoverflow.com/questions/53015621/ffmpeg-library-how-to-precisely-seek-in-an-audio-file
 
-                if (decoder->seek_pending && decoder->packet->pts > 0 && decoder->seek_timestamp > 0 && decoder->packet->pts < decoder->seek_timestamp) {
+                if (decoder->seek_pending) {
 
-                    int64_t skip_frames = decoder->seek_timestamp - decoder->packet->pts;
+                    if (decoder->packet->pts < decoder->seek_timestamp)
+                    {
+                        int64_t skip_frames = decoder->seek_timestamp - decoder->packet->pts;
 
-                    // Next step: we need to provide side data to our packet,
-                    // and it will tell the codec to drop frames.
-                    uint8_t* data = av_packet_get_side_data(decoder->packet, AV_PKT_DATA_SKIP_SAMPLES, 0);
-                    if (!data) {
-                        data = av_packet_new_side_data(decoder->packet, AV_PKT_DATA_SKIP_SAMPLES, 10);
+                        // Next step: we need to provide side data to our packet,
+                        // and it will tell the codec to drop frames.
+                        uint8_t* data = av_packet_get_side_data(decoder->packet, AV_PKT_DATA_SKIP_SAMPLES, 0);
+                        if (!data) {
+                            data = av_packet_new_side_data(decoder->packet, AV_PKT_DATA_SKIP_SAMPLES, 10);
+                        }
+
+                        // Define parameters of side data. You can check them here:
+                        // https://ffmpeg.org/doxygen/trunk/group__lavc__packet.html#ga9a80bfcacc586b483a973272800edb97
+                        *((uint32_t*)(data)) = skip_frames;
+                        data[8] = 0;
                     }
 
-                    // Define parameters of side data. You can check them here:
-                    // https://ffmpeg.org/doxygen/trunk/group__lavc__packet.html#ga9a80bfcacc586b483a973272800edb97
-                    *((uint32_t*)(data)) = skip_frames;
-                    data[8] = 0;
+                    decoder->seek_pending = 0;
                 }
 
                 if (avcodec_send_packet(decoder->codec_ctx, decoder->packet) < 0) {
-                    decoder->seek_pending = 0;
                     av_packet_unref(decoder->packet);
                     *out_frames_read = frames_read;
                     return SF_RESULT_DECODER_ERROR_DECODING_FAILED;
