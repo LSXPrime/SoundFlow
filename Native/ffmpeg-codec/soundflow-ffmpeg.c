@@ -322,7 +322,7 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
     }
 
     // Read and discard packets until we reach the desired position
-    int64_t packetTimestamp = -1;
+    int64_t packetTimestamp = 0;
 
     AVPacket* pkt = av_packet_alloc();
     while (av_read_frame(decoder->format_ctx, pkt) >= 0) {
@@ -338,7 +338,7 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
     if (packetTimestamp >= 0)
         *resultFrameIndex = av_rescale_q(packetTimestamp, (AVRational) { stream->codecpar->sample_rate, 1 }, av_inv_q(stream->time_base));
     else
-        *resultFrameIndex = -1;
+        *resultFrameIndex = packetTimestamp;
 
     return SF_RESULT_SUCCESS;
 }
