@@ -336,7 +336,7 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
     av_packet_free(&pkt);
 
     if (packetTimestamp >= 0)
-        *resultFrameIndex = av_rescale_q(packetTimestamp, stream->time_base, (AVRational) { 1, stream->codecpar->sample_rate });
+        *resultFrameIndex = av_rescale_q(frameIndex, (AVRational) { 1, stream->time_base }, stream->codecpar->sample_rate);
     else
         *resultFrameIndex = -1;
 
