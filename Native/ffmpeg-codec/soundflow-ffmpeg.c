@@ -284,20 +284,13 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
         if (read_ret == 0) {
             if (decoder->packet->stream_index == decoder->stream_index) {
 
-                // Solution from: https://stackoverflow.com/questions/53015621/ffmpeg-library-how-to-precisely-seek-in-an-audio-file
+                // Solution based on: https://stackoverflow.com/questions/53015621/ffmpeg-library-how-to-precisely-seek-in-an-audio-file
 
                 if (decoder->seek_pending) {
 
-                    int64_t pts = decoder->packet->pts;
-                    
-                    // Some codecs seem to have "preamble" packets that have negative pts (like -128), but the samples are actually
-                    // at 0 from testing. So we consider anything under 0 as being 0 pts which seems to work
-                    if (pts < 0)
-                        pts = 0;
-
-                    if (pts < decoder->seek_timestamp)
+                    if (decoder->packet->pts < decoder->seek_timestamp)
                     {
-                        int64_t skip_frames = decoder->seek_timestamp - pts;
+                        int64_t skip_frames = decoder->seek_timestamp - decoder->packet->pts;
 
                         // Next step: we need to provide side data to our packet,
                         // and it will tell the codec to drop frames.
@@ -356,17 +349,6 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
 
     decoder->seek_pending = 1;
     decoder->seek_timestamp = timestamp;
-
-    // Read and discard packets until we reach the desired position
-    AVPacket* pkt = av_packet_alloc();
-    while (av_read_frame(decoder->format_ctx, pkt) >= 0) {
-        if (pkt->stream_index == decoder->stream_index) {
-            av_packet_unref(pkt);
-            break;
-        }
-        av_packet_unref(pkt);
-    }
-    av_packet_free(&pkt);
 
     return SF_RESULT_SUCCESS;
 }
