@@ -85,8 +85,7 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder,
                                                    int64_t frameCount,
                                                    int64_t* out_frames_read);
 SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder,
-                                                     int64_t frameIndex,
-                                                     int64_t* resultFrameIndex);
+                                                     int64_t frameIndex);
 SF_FFMPEG_API void sf_decoder_free(SF_Decoder* decoder);
 
 // Encoder Functions

@@ -305,7 +305,7 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
     return SF_RESULT_SUCCESS;
 }
 
-SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_t frameIndex, int64_t* resultFrameIndex) {
+SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_t frameIndex) {
     if (!decoder || !decoder->format_ctx || decoder->stream_index < 0) return SF_RESULT_ERROR_INVALID_ARGS;
 
     AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
@@ -317,30 +317,42 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
 
     int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, timestamp, AVSEEK_FLAG_BACKWARD);
     if (ret < 0) {
-        *resultFrameIndex = -1;
         return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
     }
 
     // Read and discard packets until we reach the desired position
-    int64_t packetTimestamp = -1;
-
     AVPacket* pkt = av_packet_alloc();
     while (av_read_frame(decoder->format_ctx, pkt) >= 0) {
-        if (pkt->stream_index == decoder->stream_index 
-                && (pkt->flags & AV_PKT_FLAG_DISCARD) == 0
-                && (pkt->flags & AV_PKT_FLAG_DISPOSABLE) == 0) {
-            packetTimestamp = pkt->pts;
+        if (pkt->stream_index == decoder->stream_index) {
+            
+            // Solution from: https://stackoverflow.com/questions/53015621/ffmpeg-library-how-to-precisely-seek-in-an-audio-file
+
+            if (pkt->pts > 0 && timestamp > 0 && pkt->pts < timestamp) {
+                auto stream = decoder->format_ctx->streams[pkt->stream_index];
+
+                // Conversion from delta timestamp to frames.
+                auto time_delta = static_cast<float>(timestamp - pkt->pts) / stream->time_base.den;
+                int64_t skip_frames = time_delta * decoder->codec_ctx->time_base.den / decoder->codec_ctx->time_base.num;
+
+                // Next step: we need to provide side data to our packet,
+                // and it will tell the codec to drop frames.
+                uint8_t* data = av_packet_get_side_data(pkt.get(), AV_PKT_DATA_SKIP_SAMPLES, nullptr);
+                if (!data) {
+                    data = av_packet_new_side_data(pkt.get(), AV_PKT_DATA_SKIP_SAMPLES, 10);
+                }
+
+                // Define parameters of side data. You can check them here:
+                // https://ffmpeg.org/doxygen/trunk/group__lavc__packet.html#ga9a80bfcacc586b483a973272800edb97
+                *reinterpret_cast<uint32_t*>(data) = skip_frames;
+                data[8] = 0;
+            }
+
             av_packet_unref(pkt);
             break;
         }
         av_packet_unref(pkt);
     }
     av_packet_free(&pkt);
-
-    if (packetTimestamp >= 0)
-        *resultFrameIndex = av_rescale_q(packetTimestamp, (AVRational) { stream->codecpar->sample_rate, 1 }, av_inv_q(stream->time_base));
-    else
-        *resultFrameIndex = packetTimestamp;
 
     return SF_RESULT_SUCCESS;
 }
