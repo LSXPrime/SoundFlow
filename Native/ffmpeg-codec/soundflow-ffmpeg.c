@@ -289,6 +289,7 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                 if (decoder->seek_pending && decoder->packet->pts > 0 && decoder->seek_timestamp > 0 && decoder->packet->pts < decoder->seek_timestamp) {
 
                     int64_t skip_frames = decoder->seek_timestamp - decoder->packet->pts;
+                    skip_frames *= decoder->target_channels;
 
                     // Next step: we need to provide side data to our packet,
                     // and it will tell the codec to drop frames.
@@ -303,9 +304,8 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                     data[8] = 0;
                 }
 
-                decoder->seek_pending = 0;
-
                 if (avcodec_send_packet(decoder->codec_ctx, decoder->packet) < 0) {
+                    decoder->seek_pending = 0;
                     av_packet_unref(decoder->packet);
                     *out_frames_read = frames_read;
                     return SF_RESULT_DECODER_ERROR_DECODING_FAILED;
