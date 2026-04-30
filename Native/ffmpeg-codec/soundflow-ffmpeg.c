@@ -29,7 +29,7 @@ struct SF_Decoder {
     void* pUserData;
     int target_bytes_per_sample;
     int target_channels;
-    bool seek_pending;
+    int seek_pending;
     int64_t seek_timestamp;
 };
 
@@ -303,7 +303,7 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                     data[8] = 0;
                 }
 
-                decoder->seek_pending = false;
+                decoder->seek_pending = 0;
 
                 if (avcodec_send_packet(decoder->codec_ctx, decoder->packet) < 0) {
                     av_packet_unref(decoder->packet);
@@ -344,7 +344,7 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
         return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
     }
 
-    decoder->seek_pending = true;
+    decoder->seek_pending = 1;
     decoder->seek_timestamp = timestamp;
 
     // Read and discard packets until we reach the desired position
