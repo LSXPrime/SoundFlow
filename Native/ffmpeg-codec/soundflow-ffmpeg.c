@@ -348,7 +348,7 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
     }
 
     decoder->seek_pending = 1;
-    decoder->seek_timestamp = timestamp;
+    decoder->seek_timestamp = timestamp - 128;
 
     return SF_RESULT_SUCCESS;
 }
