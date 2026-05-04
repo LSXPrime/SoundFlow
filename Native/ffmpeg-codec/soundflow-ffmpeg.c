@@ -204,10 +204,12 @@ SF_FFMPEG_API int64_t sf_decoder_get_length_in_pcm_frames(SF_Decoder* decoder) {
     return 0;
 }
 
-SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pFramesOut, int64_t frameCount, int64_t* out_frames_read) {
+SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pFramesOut, int64_t frameCount, int64_t* out_frames_read,
+    int64_t* out_skipped_frames) {
     if (!decoder || !pFramesOut || !out_frames_read || frameCount <= 0) return SF_RESULT_ERROR_INVALID_ARGS;
 
     *out_frames_read = 0;
+    *out_skipped_frames = 0;
     uint8_t* out_ptr[] = { (uint8_t*)pFramesOut };
     int64_t frames_read = 0;
     int draining = 0;
@@ -292,6 +294,8 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                     {
                         int64_t skip_frames = decoder->seek_timestamp - decoder->packet->pts;
 
+                        *out_skipped_frames += skip_frames;
+
                         // Next step: we need to provide side data to our packet,
                         // and it will tell the codec to drop frames.
                         uint8_t* data = av_packet_get_side_data(decoder->packet, AV_PKT_DATA_SKIP_SAMPLES, 0);
@@ -348,7 +352,7 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
     }
 
     decoder->seek_pending = 1;
-    decoder->seek_timestamp = timestamp - 128;
+    decoder->seek_timestamp = timestamp;
 
     return SF_RESULT_SUCCESS;
 }
