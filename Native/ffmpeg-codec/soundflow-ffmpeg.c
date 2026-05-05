@@ -143,6 +143,7 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     av_dict_set(&options, "scan_all_pmts", "0", 0);
     av_dict_set(&options, "probesize", "5000000", 0);
     av_dict_set(&options, "analyzeduration", "10000000", 0);
+    av_dict_set(&options, "avoid_negative_ts", "make_zero", 0);
 
     if (avformat_open_input(&decoder->format_ctx, NULL, NULL, &options) != 0) return SF_RESULT_DECODER_ERROR_OPEN_INPUT;
     if (avformat_find_stream_info(decoder->format_ctx, NULL) < 0) return SF_RESULT_DECODER_ERROR_FIND_STREAM_INFO;
@@ -340,7 +341,7 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
     AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
     int64_t timestamp = av_rescale_q(frameIndex, (AVRational){1, stream->codecpar->sample_rate}, stream->time_base);
 
-    timestamp -= 128;
+    //timestamp -= 128;
 
     // Flush buffers and seek
     avcodec_flush_buffers(decoder->codec_ctx);
