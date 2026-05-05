@@ -295,9 +295,6 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
 
                     // Negative pts we should treat as start. For some reason some codecs, like OGG Vorbis start with -128
                     // which contains the first 128 samples of data. Followed by packet that is then pts 128
-                    if (pts < 0)
-                        pts = 0;
-
                     int64_t end = pts + decoder->packet->duration;
 
                     if (decoder->seek_timestamp >= end)
@@ -342,6 +339,8 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
 
     AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
     int64_t timestamp = av_rescale_q(frameIndex, (AVRational){1, stream->codecpar->sample_rate}, stream->time_base);
+
+    timestamp -= 128;
 
     // Flush buffers and seek
     avcodec_flush_buffers(decoder->codec_ctx);
