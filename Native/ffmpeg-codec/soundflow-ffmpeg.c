@@ -119,7 +119,7 @@ SF_FFMPEG_API SF_Decoder* sf_decoder_create() {
 
 SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback onRead, sf_seek_callback onSeek, void* pUserData,
                                         SFSampleFormat target_format, SFSampleFormat* out_native_format,
-                                        uint32_t* out_channels, uint32_t* out_samplerate) {
+                                        uint32_t* out_channels, uint32_t* out_samplerate, int64_t* out_start_timestamp) {
     if (!decoder) return SF_RESULT_ERROR_INVALID_ARGS;
 
     // Set FFmpeg to only log errors
@@ -143,7 +143,6 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     av_dict_set(&options, "scan_all_pmts", "0", 0);
     av_dict_set(&options, "probesize", "5000000", 0);
     av_dict_set(&options, "analyzeduration", "10000000", 0);
-    av_dict_set(&options, "avoid_negative_ts", "make_non_negative", 0);
 
     if (avformat_open_input(&decoder->format_ctx, NULL, NULL, &options) != 0) return SF_RESULT_DECODER_ERROR_OPEN_INPUT;
     if (avformat_find_stream_info(decoder->format_ctx, NULL) < 0) return SF_RESULT_DECODER_ERROR_FIND_STREAM_INFO;
@@ -171,6 +170,7 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     *out_channels = decoder->codec_ctx->ch_layout.nb_channels;
     *out_samplerate = decoder->codec_ctx->sample_rate;
     *out_native_format = from_ffmpeg_sample_format(decoder->codec_ctx->sample_fmt);
+    *out_start_timestamp = format_ctx->start_time;
 
     enum AVSampleFormat target_av_format = to_ffmpeg_sample_format(target_format);
     if (target_av_format == AV_SAMPLE_FMT_NONE) return SF_RESULT_DECODER_ERROR_INVALID_TARGET_FORMAT;
