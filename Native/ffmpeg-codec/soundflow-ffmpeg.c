@@ -321,6 +321,8 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                     // We're at the right packet, let's check if we need to discard some samples to seek to precise location within this packet
                     int64_t skip_frames = decoder->seek_timestamp - pts;
 
+                    *out_start_frame = skip_frames;
+
                     if(skip_frames > 0)
                     {
                         // Next step: we need to provide side data to our packet,
@@ -339,8 +341,8 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                     decoder->seek_pending = 0;
                 }
 
-                if (*out_start_frame == -1)
-                    *out_start_frame = decoder->packet->pts;
+                /**/if (*out_start_frame == -1)
+                    *out_start_frame = decoder->packet->pts;*/
 
                 if (avcodec_send_packet(decoder->codec_ctx, decoder->packet) < 0) {
                     av_packet_unref(decoder->packet);
