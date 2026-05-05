@@ -285,10 +285,10 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
 
         if (read_ret == 0) {
 
-            if(*out_start_frame == -1)
-                *out_start_frame = decoder->packet->pts;
-
             if (decoder->packet->stream_index == decoder->stream_index) {
+
+                if (*out_start_frame == -1)
+                    *out_start_frame = decoder->packet->pts;
 
                 // Solution based on: https://stackoverflow.com/questions/53015621/ffmpeg-library-how-to-precisely-seek-in-an-audio-file
 
