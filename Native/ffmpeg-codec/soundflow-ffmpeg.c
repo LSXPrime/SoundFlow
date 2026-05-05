@@ -170,7 +170,6 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     *out_channels = decoder->codec_ctx->ch_layout.nb_channels;
     *out_samplerate = decoder->codec_ctx->sample_rate;
     *out_native_format = from_ffmpeg_sample_format(decoder->codec_ctx->sample_fmt);
-    *out_start_timestamp = decoder->format_ctx->start_time;
 
     enum AVSampleFormat target_av_format = to_ffmpeg_sample_format(target_format);
     if (target_av_format == AV_SAMPLE_FMT_NONE) return SF_RESULT_DECODER_ERROR_INVALID_TARGET_FORMAT;
@@ -188,6 +187,20 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     decoder->packet = av_packet_alloc();
     decoder->frame = av_frame_alloc();
     if (!decoder->packet || !decoder->frame) return SF_RESULT_DECODER_ERROR_PACKET_FRAME_ALLOC;
+
+    // Find the pts of the first packet
+    while (av_read_frame(decoder->format_ctx, decoder->packet) >= 0) {
+        // Filter to a specific stream index if needed (e.g., stream 0)
+        if (decoder->packet->stream_index == decoder->stream_index && pkt->pts != AV_NOPTS_VALUE) {
+            *out_start_timestamp = decoder->packet->pts;
+            av_packet_unref(decoder->packet);
+            break;
+        }
+        av_packet_unref(decoder->packet);
+    }
+
+    // Seek back to beginning
+    av_seek_frame(decoder->format_ctx, decoder->stream_index, 0, AVSEEK_FLAG_BACKWARD);
 
     return SF_RESULT_SUCCESS;
 }
