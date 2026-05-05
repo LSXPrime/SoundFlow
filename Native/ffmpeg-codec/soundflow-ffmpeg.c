@@ -285,7 +285,7 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
 
         if (read_ret == 0) {
 
-            if(*out_start_frame != -1)
+            if(*out_start_frame == -1)
                 *out_start_frame = decoder->packet->pts;
 
             if (decoder->packet->stream_index == decoder->stream_index) {
