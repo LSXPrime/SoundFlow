@@ -323,6 +323,9 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
 
                     if(skip_frames > 0)
                     {
+                        // Compensate by frames
+                        skip_frames *= decoder->target_channels;
+
                         // Next step: we need to provide side data to our packet,
                         // and it will tell the codec to drop frames.
                         uint8_t* data = av_packet_get_side_data(decoder->packet, AV_PKT_DATA_SKIP_SAMPLES, 0);
