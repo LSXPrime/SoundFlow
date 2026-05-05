@@ -329,10 +329,11 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                         if (!data) {
                             data = av_packet_new_side_data(decoder->packet, AV_PKT_DATA_SKIP_SAMPLES, 10);
 
-                        // Define parameters of side data. You can check them here:
-                        // https://ffmpeg.org/doxygen/trunk/group__lavc__packet.html#ga9a80bfcacc586b483a973272800edb97
-                        *((uint32_t*)(data)) = skip_frames;
-                        data[8] = 0;
+                            // Define parameters of side data. You can check them here:
+                            // https://ffmpeg.org/doxygen/trunk/group__lavc__packet.html#ga9a80bfcacc586b483a973272800edb97
+                            *((uint32_t*)(data)) = skip_frames;
+                            data[8] = 0;
+                        }
                     }
 
                     decoder->seek_pending = 0;
