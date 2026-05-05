@@ -209,7 +209,7 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
     if (!decoder || !pFramesOut || !out_frames_read || frameCount <= 0) return SF_RESULT_ERROR_INVALID_ARGS;
 
     *out_frames_read = 0;
-    *out_start_frame = 0;
+    *out_start_frame = -1;
     uint8_t* out_ptr[] = { (uint8_t*)pFramesOut };
     int64_t frames_read = 0;
     int draining = 0;
@@ -284,12 +284,16 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
         int read_ret = av_read_frame(decoder->format_ctx, decoder->packet);
 
         if (read_ret == 0) {
+
+            if(*out_start_frame != -1)
+                *out_start_frame = decoder->packet->pts;
+
             if (decoder->packet->stream_index == decoder->stream_index) {
 
                 // Solution based on: https://stackoverflow.com/questions/53015621/ffmpeg-library-how-to-precisely-seek-in-an-audio-file
 
                 if (decoder->seek_pending) {
-                    *out_start_frame = decoder->packet->pts;
+                    
 
                     decoder->seek_pending = 0;
                 }
