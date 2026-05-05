@@ -29,6 +29,7 @@ struct SF_Decoder {
     void* pUserData;
     int target_bytes_per_sample;
     int target_channels;
+    int64_t start_pts;
     int seek_pending;
     int64_t seek_timestamp;
 };
@@ -119,7 +120,7 @@ SF_FFMPEG_API SF_Decoder* sf_decoder_create() {
 
 SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback onRead, sf_seek_callback onSeek, void* pUserData,
                                         SFSampleFormat target_format, SFSampleFormat* out_native_format,
-                                        uint32_t* out_channels, uint32_t* out_samplerate, int64_t* out_start_timestamp) {
+                                        uint32_t* out_channels, uint32_t* out_samplerate) {
     if (!decoder) return SF_RESULT_ERROR_INVALID_ARGS;
 
     // Set FFmpeg to only log errors
@@ -188,11 +189,13 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     decoder->frame = av_frame_alloc();
     if (!decoder->packet || !decoder->frame) return SF_RESULT_DECODER_ERROR_PACKET_FRAME_ALLOC;
 
+    decoder->start_pts = 0;
+
     // Find the pts of the first packet
     while (av_read_frame(decoder->format_ctx, decoder->packet) >= 0) {
         // Filter to a specific stream index if needed (e.g., stream 0)
         if (decoder->packet->stream_index == decoder->stream_index && decoder->packet->pts != AV_NOPTS_VALUE) {
-            *out_start_timestamp = decoder->packet->pts;
+            decoder->start_pts = decoder->packet->pts;
             av_packet_unref(decoder->packet);
             break;
         }
@@ -200,7 +203,7 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     }
 
     // Seek back to beginning
-    av_seek_frame(decoder->format_ctx, decoder->stream_index, 0, AVSEEK_FLAG_BACKWARD);
+    av_seek_frame(decoder->format_ctx, decoder->stream_index, decoder->start_pts, AVSEEK_FLAG_BACKWARD);
 
     return SF_RESULT_SUCCESS;
 }
@@ -306,9 +309,6 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                 if (decoder->seek_pending) {
                     
                     int64_t pts = decoder->packet->pts;
-
-                    // Negative pts we should treat as start. For some reason some codecs, like OGG Vorbis start with -128
-                    // which contains the first 128 samples of data. Followed by packet that is then pts 128
                     int64_t end = pts + decoder->packet->duration;
 
                     if (decoder->seek_timestamp >= end)
@@ -354,7 +354,7 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
     AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
     int64_t timestamp = av_rescale_q(frameIndex, (AVRational){1, stream->codecpar->sample_rate}, stream->time_base);
 
-    //timestamp -= 128;
+    timestamp += decoder->start_pts;
 
     // Flush buffers and seek
     avcodec_flush_buffers(decoder->codec_ctx);
