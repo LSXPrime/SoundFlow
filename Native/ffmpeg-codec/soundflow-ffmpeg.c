@@ -300,7 +300,7 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
 
                     int64_t end = pts + decoder->packet->duration;
 
-                    if (decoder->seek_timestamp > end)
+                    if (decoder->seek_timestamp >= end)
                     {
                         // This packet doesn't contain the desired timestamp at all! We need to skip it completely and fetch the next one
                         av_packet_unref(decoder->packet);
