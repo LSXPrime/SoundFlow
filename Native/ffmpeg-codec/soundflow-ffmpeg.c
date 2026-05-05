@@ -318,6 +318,23 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                         continue;
                     }
 
+                    // We're at the right packet, let's check if we need to discard some samples to seek to precise location within this packet
+                    int64_t skip_frames = decoder->seek_timestamp - pts;
+
+                    if(skip_frames > 0)
+                    {
+                        // Next step: we need to provide side data to our packet,
+                        // and it will tell the codec to drop frames.
+                        uint8_t* data = av_packet_get_side_data(decoder->packet, AV_PKT_DATA_SKIP_SAMPLES, 0);
+                        if (!data) {
+                            data = av_packet_new_side_data(decoder->packet, AV_PKT_DATA_SKIP_SAMPLES, 10);
+
+                        // Define parameters of side data. You can check them here:
+                        // https://ffmpeg.org/doxygen/trunk/group__lavc__packet.html#ga9a80bfcacc586b483a973272800edb97
+                        *((uint32_t*)(data)) = skip_frames;
+                        data[8] = 0;
+                    }
+
                     decoder->seek_pending = 0;
                 }
 
