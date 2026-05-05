@@ -191,7 +191,7 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     // Find the pts of the first packet
     while (av_read_frame(decoder->format_ctx, decoder->packet) >= 0) {
         // Filter to a specific stream index if needed (e.g., stream 0)
-        if (decoder->packet->stream_index == decoder->stream_index && pkt->pts != AV_NOPTS_VALUE) {
+        if (decoder->packet->stream_index == decoder->stream_index && decoder->packet->pts != AV_NOPTS_VALUE) {
             *out_start_timestamp = decoder->packet->pts;
             av_packet_unref(decoder->packet);
             break;
