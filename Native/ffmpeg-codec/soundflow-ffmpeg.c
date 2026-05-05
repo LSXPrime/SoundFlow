@@ -287,16 +287,31 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
 
             if (decoder->packet->stream_index == decoder->stream_index) {
 
-                if (*out_start_frame == -1)
-                    *out_start_frame = decoder->packet->pts;
-
                 // Solution based on: https://stackoverflow.com/questions/53015621/ffmpeg-library-how-to-precisely-seek-in-an-audio-file
 
                 if (decoder->seek_pending) {
                     
+                    int64_t pts = decoder->packet->pts;
+
+                    // Negative pts we should treat as start. For some reason some codecs, like OGG Vorbis start with -128
+                    // which contains the first 128 samples of data. Followed by packet that is then pts 128
+                    if (pts < 0)
+                        pts = 0;
+
+                    int64_t end = pts + decoder->packet->duration;
+
+                    if (decoder->seek_timestamp > end)
+                    {
+                        // This packet doesn't contain the desired timestamp at all! We need to skip it completely and fetch the next one
+                        av_packet_unref(decoder->packet);
+                        continue;
+                    }
 
                     decoder->seek_pending = 0;
                 }
+
+                if (*out_start_frame == -1)
+                    *out_start_frame = decoder->packet->pts;
 
                 if (avcodec_send_packet(decoder->codec_ctx, decoder->packet) < 0) {
                     av_packet_unref(decoder->packet);
@@ -332,21 +347,10 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
     avcodec_flush_buffers(decoder->codec_ctx);
     swr_init(decoder->swr_ctx);  // Reset resampler state
 
-    int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, frameIndex, AVSEEK_FLAG_BACKWARD);
+    int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, timestamp, AVSEEK_FLAG_BACKWARD);
     if (ret < 0) {
         return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
     }
-
-    // Read and discard packets until we reach the desired position
-    AVPacket* pkt = av_packet_alloc();
-    while (av_read_frame(decoder->format_ctx, pkt) >= 0) {
-        if (pkt->stream_index == decoder->stream_index) {
-            av_packet_unref(pkt);
-            break;
-        }
-        av_packet_unref(pkt);
-    }
-    av_packet_free(&pkt);
 
     decoder->seek_pending = 1;
     decoder->seek_timestamp = timestamp;
