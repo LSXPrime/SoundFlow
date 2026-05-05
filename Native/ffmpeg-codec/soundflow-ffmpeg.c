@@ -333,17 +333,6 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
         return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
     }
 
-    // Read and discard packets until we reach the desired position
-    AVPacket* pkt = av_packet_alloc();
-    while (av_read_frame(decoder->format_ctx, pkt) >= 0) {
-        if (pkt->stream_index == decoder->stream_index) {
-            av_packet_unref(pkt);
-            break;
-        }
-        av_packet_unref(pkt);
-    }
-    av_packet_free(&pkt);
-
     decoder->seek_pending = 1;
     decoder->seek_timestamp = timestamp;
 
