@@ -319,7 +319,8 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                         continue;
                     }
 
-                    *out_start_frame = decoder->seek_timestamp - pts;
+                    //*out_start_frame = decoder->seek_timestamp - pts;
+                    *out_start_frame = pts;
 
                     decoder->seek_pending = 0;
                 }
