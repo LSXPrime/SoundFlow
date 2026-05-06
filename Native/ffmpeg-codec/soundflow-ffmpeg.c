@@ -309,8 +309,8 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
 
                 if (decoder->seek_pending) {
                     
-                    int64_t pts = decoder->packet->pts;
-                    int64_t end = pts + decoder->packet->duration;
+                    int64_t pts = decoder->packet->pts - decoder->packet->duration;
+                    int64_t end = decoder->packet->pts;
 
                     if (decoder->seek_timestamp >= end)
                     {
