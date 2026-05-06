@@ -354,8 +354,6 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
     AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
     int64_t timestamp = av_rescale_q(frameIndex, (AVRational){1, stream->codecpar->sample_rate}, stream->time_base);
 
-    timestamp += decoder->start_pts;
-
     // Flush buffers and seek
     avcodec_flush_buffers(decoder->codec_ctx);
     swr_init(decoder->swr_ctx);  // Reset resampler state
