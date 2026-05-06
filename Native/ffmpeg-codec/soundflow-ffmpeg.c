@@ -322,7 +322,7 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                 }
 
                 if (*out_start_frame == -1)
-                    *out_start_frame = decoder->packet->pts + decoder->start_pts;
+                    *out_start_frame = decoder->packet->pts - decoder->start_pts;
 
                 if (avcodec_send_packet(decoder->codec_ctx, decoder->packet) < 0) {
                     av_packet_unref(decoder->packet);
