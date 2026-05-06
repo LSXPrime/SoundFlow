@@ -144,6 +144,7 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     av_dict_set(&options, "scan_all_pmts", "0", 0);
     av_dict_set(&options, "probesize", "5000000", 0);
     av_dict_set(&options, "analyzeduration", "10000000", 0);
+    av_dict_set(&options, "avoid_negative_ts", "disabled", 0);
 
     if (avformat_open_input(&decoder->format_ctx, NULL, NULL, &options) != 0) return SF_RESULT_DECODER_ERROR_OPEN_INPUT;
     if (avformat_find_stream_info(decoder->format_ctx, NULL) < 0) return SF_RESULT_DECODER_ERROR_FIND_STREAM_INFO;
