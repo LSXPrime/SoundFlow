@@ -308,7 +308,7 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                         av_packet_unref(decoder->packet);
 
                         // We can skip flushing the buffers and go straight to the seek, because if the seek is pending, they've just been flushed
-                        int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, decoder->seek_timestamp - decoder->longest_packet_duration, 
+                        int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, decoder->seek_timestamp - decoder->longest_packet_duration - 1, 
                             AVSEEK_FLAG_BACKWARD);
                         if (ret < 0) {
                             return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
