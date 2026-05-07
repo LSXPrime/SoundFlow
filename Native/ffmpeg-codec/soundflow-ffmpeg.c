@@ -220,6 +220,9 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
     int64_t frames_read = 0;
     int draining = 0;
 
+    int64_t latestPts = -1;
+    int64_t latestDuration = -1;
+
     while (frames_read < frameCount) {
         // Check if the resampler has data buffered from previous calls.
         if (swr_get_out_samples(decoder->swr_ctx, 0) > 0) {
@@ -235,6 +238,12 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
             if (out_samples > 0) {
                 out_ptr[0] += out_samples * decoder->target_channels * decoder->target_bytes_per_sample;
                 frames_read += out_samples;
+
+                if (*out_start_frame < 0)
+                {
+                    *out_start_frame = latestPts;
+                    *out_duration = latestDuration;
+                }
 
                 // If we filled the user buffer, we are done for this call.
                 if (frames_read >= frameCount) break;
@@ -256,6 +265,12 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                 out_ptr[0] += out_samples * decoder->target_channels * decoder->target_bytes_per_sample;
                 frames_read += out_samples;
                 *out_duration = -3;
+
+                if (*out_start_frame < 0)
+                {
+                    *out_start_frame = latestPts;
+                    *out_duration = latestDuration;
+                }
             }
             av_frame_unref(decoder->frame);
             continue;
@@ -272,6 +287,12 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                     out_ptr[0] += flushed_samples * decoder->target_channels * decoder->target_bytes_per_sample;
                     frames_read += flushed_samples;
                     *out_duration = -4;
+
+                    if (*out_start_frame < 0)
+                    {
+                        *out_start_frame = latestPts;
+                        *out_duration = latestDuration;
+                    }
                 }
             } while (flushed_samples > 0 && frames_read < frameCount);
 
@@ -318,11 +339,8 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                     decoder->seek_pending = 0;
                 }*/
 
-                if (*out_start_frame < 0)
-                {
-                    *out_start_frame = decoder->packet->pts;
-                    *out_duration = decoder->packet->duration;
-                }
+                latestPts = decoder->packet->pts;
+                latestDuration = decoder->packet->duration;
 
                 if (avcodec_send_packet(decoder->codec_ctx, decoder->packet) < 0) {
                     av_packet_unref(decoder->packet);
