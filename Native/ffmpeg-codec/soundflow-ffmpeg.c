@@ -329,11 +329,11 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
 
     // Convert the start pts to frame index
     if (startPts == PTS_UNINITIALIZED || startPts < 0)
-        *out_startFrameIndex = -1;
+        *out_start_frameIndex = -1;
     else
     {
         AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
-        *out_startFrameIndex = av_rescale_q(startPts, stream->time_base, (AVRational) { 1, stream->codecpar->sample_rate });
+        *out_start_frameIndex = av_rescale_q(startPts, stream->time_base, (AVRational) { 1, stream->codecpar->sample_rate });
     }
 
     return SF_RESULT_SUCCESS;
