@@ -311,7 +311,7 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                         int64_t newTimestamp = pts - dur * 2;
 
                         if (decoder->seek_pending == 2)
-                            newTimestamp = 0;
+                            newTimestamp = -128;
 
                         // Flush buffers and seek
                         avcodec_flush_buffers(decoder->codec_ctx);
