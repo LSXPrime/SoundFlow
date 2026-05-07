@@ -209,11 +209,12 @@ SF_FFMPEG_API int64_t sf_decoder_get_length_in_pcm_frames(SF_Decoder* decoder) {
 }
 
 SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pFramesOut, int64_t frameCount, int64_t* out_frames_read,
-    int64_t* out_start_frame) {
+    int64_t* out_start_frame, int64_t* out_duration) {
     if (!decoder || !pFramesOut || !out_frames_read || frameCount <= 0) return SF_RESULT_ERROR_INVALID_ARGS;
 
     *out_frames_read = 0;
     *out_start_frame = -1;
+    *out_duration = -1;
     uint8_t* out_ptr[] = { (uint8_t*)pFramesOut };
     int64_t frames_read = 0;
     int draining = 0;
@@ -335,10 +336,11 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                         continue;
                     }
 
-                    *out_start_frame = pts;
-
                     decoder->seek_pending = 0;
                 }
+
+                *out_start_frame = decoder->packet->pts;
+                *out_duration = decoder->packet->duration;
 
                 if (avcodec_send_packet(decoder->codec_ctx, decoder->packet) < 0) {
                     av_packet_unref(decoder->packet);
