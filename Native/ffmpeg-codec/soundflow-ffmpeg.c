@@ -191,6 +191,7 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     if (!decoder->packet || !decoder->frame) return SF_RESULT_DECODER_ERROR_PACKET_FRAME_ALLOC;
 
     decoder->longest_packet_duration = 0;
+    decoder->seek_pending = 0;
 
     return SF_RESULT_SUCCESS;
 }
