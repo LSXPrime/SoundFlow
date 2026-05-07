@@ -358,7 +358,11 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
     avcodec_flush_buffers(decoder->codec_ctx);
     avformat_flush(decoder->format_ctx);
     avio_flush(decoder->format_ctx->pb);
-    swr_convert(decoder->swr_ctx, NULL, 0, NULL, 0);  // Reset resampler state
+
+    swr_close(decoder->swr_ctx);
+    if (swr_init(decoder->swr_ctx) < 0) {
+        return SF_RESULT_DECODER_ERROR_RESAMPLER_INIT_FAILED;
+    }
 
     int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, timestamp, AVSEEK_FLAG_BACKWARD);
     if (ret < 0) {
