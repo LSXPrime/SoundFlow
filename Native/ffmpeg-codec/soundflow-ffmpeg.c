@@ -298,47 +298,47 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
 
                 // Solution based on: https://stackoverflow.com/questions/53015621/ffmpeg-library-how-to-precisely-seek-in-an-audio-file
 
-                if (decoder->seek_pending) {
-                    
-                    int64_t dur = decoder->packet->duration;
-                    int64_t pts = decoder->packet->pts + dur;
-                    int64_t end = pts + dur;
+                //if (decoder->seek_pending) {
+                //    
+                //    int64_t dur = decoder->packet->duration;
+                //    int64_t pts = decoder->packet->pts + dur;
+                //    int64_t end = pts + dur;
 
-                    if (decoder->seek_timestamp < pts)
-                    {
-                        // This packet is too late! We went too far ahead. This would typically happen when we haven't compensated timestamp properly
-                        // We should have a new longest_packet_duration value at this point, so we just need to re-seek
-                        av_packet_unref(decoder->packet);
+                //    if (decoder->seek_timestamp < pts)
+                //    {
+                //        // This packet is too late! We went too far ahead. This would typically happen when we haven't compensated timestamp properly
+                //        // We should have a new longest_packet_duration value at this point, so we just need to re-seek
+                //        av_packet_unref(decoder->packet);
 
-                        int64_t newTimestamp = pts - dur * 2;
+                //        int64_t newTimestamp = pts - dur * 2;
 
-                        if (decoder->seek_pending == 2)
-                            newTimestamp = -128;
+                //        if (decoder->seek_pending == 2)
+                //            newTimestamp = -128;
 
-                        // Flush buffers and seek
-                        avcodec_flush_buffers(decoder->codec_ctx);
-                        swr_init(decoder->swr_ctx);  // Reset resampler state
+                //        // Flush buffers and seek
+                //        avcodec_flush_buffers(decoder->codec_ctx);
+                //        swr_init(decoder->swr_ctx);  // Reset resampler state
 
-                        // We can skip flushing the buffers and go straight to the seek, because if the seek is pending, they've just been flushed
-                        int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, newTimestamp, AVSEEK_FLAG_BACKWARD);
-                        if (ret < 0) {
-                            return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
-                        }
+                //        // We can skip flushing the buffers and go straight to the seek, because if the seek is pending, they've just been flushed
+                //        int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, newTimestamp, AVSEEK_FLAG_BACKWARD);
+                //        if (ret < 0) {
+                //            return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
+                //        }
 
-                        decoder->seek_pending = 2;
+                //        decoder->seek_pending = 2;
 
-                        continue;
-                    }
+                //        continue;
+                //    }
 
-                    if (decoder->seek_timestamp >= end)
-                    {
-                        // This packet doesn't contain the desired timestamp at all! We need to skip it completely and fetch the next one
-                        av_packet_unref(decoder->packet);
-                        continue;
-                    }
+                //    if (decoder->seek_timestamp >= end)
+                //    {
+                //        // This packet doesn't contain the desired timestamp at all! We need to skip it completely and fetch the next one
+                //        av_packet_unref(decoder->packet);
+                //        continue;
+                //    }
 
-                    decoder->seek_pending = 0;
-                }
+                //    decoder->seek_pending = 0;
+                //}
 
                 *out_start_frame = decoder->packet->pts;
                 *out_duration = decoder->packet->duration;
