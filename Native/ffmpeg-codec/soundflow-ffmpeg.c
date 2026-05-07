@@ -340,8 +340,11 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                 //    decoder->seek_pending = 0;
                 //}
 
-                *out_start_frame = decoder->packet->pts;
-                *out_duration = decoder->packet->duration;
+                if (*out_start_frame < 0)
+                {
+                    *out_start_frame = decoder->packet->pts;
+                    *out_duration = decoder->packet->duration;
+                }
 
                 if (avcodec_send_packet(decoder->codec_ctx, decoder->packet) < 0) {
                     av_packet_unref(decoder->packet);
