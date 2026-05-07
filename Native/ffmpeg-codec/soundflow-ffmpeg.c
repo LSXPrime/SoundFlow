@@ -29,9 +29,9 @@ struct SF_Decoder {
     void* pUserData;
     int target_bytes_per_sample;
     int target_channels;
-    int64_t start_pts;
     int seek_pending;
     int64_t seek_timestamp;
+    int longest_packet_duration;
 };
 
 struct SF_Encoder {
@@ -190,21 +190,7 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     decoder->frame = av_frame_alloc();
     if (!decoder->packet || !decoder->frame) return SF_RESULT_DECODER_ERROR_PACKET_FRAME_ALLOC;
 
-    decoder->start_pts = 0;
-
-    // Find the pts of the first packet
-    while (av_read_frame(decoder->format_ctx, decoder->packet) >= 0) {
-        // Filter to a specific stream index if needed (e.g., stream 0)
-        if (decoder->packet->stream_index == decoder->stream_index && decoder->packet->pts != AV_NOPTS_VALUE) {
-            decoder->start_pts = decoder->packet->pts;
-            av_packet_unref(decoder->packet);
-            break;
-        }
-        av_packet_unref(decoder->packet);
-    }
-
-    // Seek back to beginning
-    av_seek_frame(decoder->format_ctx, decoder->stream_index, decoder->start_pts, AVSEEK_FLAG_BACKWARD);
+    decoder->longest_packet_duration = 0;
 
     return SF_RESULT_SUCCESS;
 }
@@ -305,6 +291,9 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
 
             if (decoder->packet->stream_index == decoder->stream_index) {
 
+                if (decoder->packet->duration > decoder->longest_packet_duration)
+                    decoder->longest_packet_duration = decoder->packet->duration;
+
                 // Solution based on: https://stackoverflow.com/questions/53015621/ffmpeg-library-how-to-precisely-seek-in-an-audio-file
 
                 if (decoder->seek_pending) {
@@ -312,12 +301,28 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                     int64_t pts = decoder->packet->pts + decoder->packet->duration;
                     int64_t end = pts + decoder->packet->duration;
 
-                    //if (decoder->seek_timestamp >= end)
-                    //{
-                    //    // This packet doesn't contain the desired timestamp at all! We need to skip it completely and fetch the next one
-                    //    av_packet_unref(decoder->packet);
-                    //    continue;
-                    //}
+                    if (decoder->seek_timestamp < pts)
+                    {
+                        // This packet is too late! We went too far ahead. This would typically happen when we haven't compensated timestamp properly
+                        // We should have a new longest_packet_duration value at this point, so we just need to re-seek
+                        av_packet_unref(decoder->packet);
+
+                        // We can skip flushing the buffers and go straight to the seek, because if the seek is pending, they've just been flushed
+                        int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, decoder->seek_timestamp - decoder->longest_packet_duration, 
+                            AVSEEK_FLAG_BACKWARD);
+                        if (ret < 0) {
+                            return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
+                        }
+
+                        continue;
+                    }
+
+                    if (decoder->seek_timestamp >= end)
+                    {
+                        // This packet doesn't contain the desired timestamp at all! We need to skip it completely and fetch the next one
+                        av_packet_unref(decoder->packet);
+                        continue;
+                    }
 
                     *out_start_frame = pts;
 
@@ -358,7 +363,7 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
     avcodec_flush_buffers(decoder->codec_ctx);
     swr_init(decoder->swr_ctx);  // Reset resampler state
 
-    int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, timestamp, AVSEEK_FLAG_BACKWARD);
+    int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, timestamp - decoder->longest_packet_duration, AVSEEK_FLAG_BACKWARD);
     if (ret < 0) {
         return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
     }
