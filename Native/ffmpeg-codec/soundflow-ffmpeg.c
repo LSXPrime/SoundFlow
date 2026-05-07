@@ -302,7 +302,7 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                     int64_t pts = decoder->packet->pts + dur;
                     int64_t end = pts + dur;
 
-                    if (decoder->seek_timestamp < pts)
+                    if (decoder->seek_timestamp < pts && decoder->seek_pending != 2)
                     {
                         // This packet is too late! We went too far ahead. This would typically happen when we haven't compensated timestamp properly
                         // We should have a new longest_packet_duration value at this point, so we just need to re-seek
@@ -314,6 +314,8 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                         if (ret < 0) {
                             return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
                         }
+
+                        decoder->seek_pending = 2;
 
                         continue;
                     }
