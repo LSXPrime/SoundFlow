@@ -360,9 +360,6 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
         return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
     }
 
-    decoder->seek_pending = 1;
-    decoder->seek_timestamp = timestamp;
-
     return SF_RESULT_SUCCESS;
 }
 
