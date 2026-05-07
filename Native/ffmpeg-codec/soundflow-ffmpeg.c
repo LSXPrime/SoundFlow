@@ -313,9 +313,12 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                         if (decoder->seek_pending == 2)
                             newTimestamp = 0;
 
+                        // Flush buffers and seek
+                        avcodec_flush_buffers(decoder->codec_ctx);
+                        swr_init(decoder->swr_ctx);  // Reset resampler state
+
                         // We can skip flushing the buffers and go straight to the seek, because if the seek is pending, they've just been flushed
-                        int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, newTimestamp,
-                            AVSEEK_FLAG_BACKWARD);
+                        int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, newTimestamp, AVSEEK_FLAG_BACKWARD);
                         if (ret < 0) {
                             return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
                         }
