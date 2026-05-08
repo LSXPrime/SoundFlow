@@ -38,7 +38,10 @@ internal sealed class FFmpegDecoder : ISoundDecoder
             throw new InvalidOperationException("Failed to create FFmpeg decoder handle.");
 
         var result = FFmpeg.InitializeDecoder(_handle, _readCallback, _seekCallback, IntPtr.Zero,
-            targetFormat.Format, out var nativeFormat, out var channels, out var sampleRate);
+            targetFormat.Format, out var nativeFormat, out var channels, out var sampleRate,
+            out var timebaseNum, out var timebaseDen);
+
+        //Console.WriteLine($"Timebase {timebaseNum} / {timebaseDen}");
 
         if (result != FFmpegResult.Success)
         {
