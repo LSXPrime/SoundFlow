@@ -199,6 +199,8 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
         }
     }
 
+    public bool PreciseSeek(int offset) => throw new NotImplementedException();
+
     /// <summary>
     /// Disposes of the decoder resources.
     /// </summary>

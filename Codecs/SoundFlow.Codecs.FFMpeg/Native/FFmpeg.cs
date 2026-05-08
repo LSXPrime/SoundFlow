@@ -185,13 +185,14 @@ internal static partial class FFmpeg
 
     [LibraryImport(LibraryName, EntryPoint = "sf_decoder_init")]
     public static partial FFmpegResult InitializeDecoder(SafeDecoderHandle decoder, ReadCallback onRead, SeekCallback onSeek, IntPtr pUserData,
-        SampleFormat targetFormat, out SampleFormat outNativeFormat, out uint outChannels, out uint outSamplerate);
+        SampleFormat targetFormat, out SampleFormat outNativeFormat, out uint outChannels, out uint outSamplerate,
+        out int outTimebaseNum, out int outTimebaseDen);
 
     [LibraryImport(LibraryName, EntryPoint = "sf_decoder_get_length_in_pcm_frames")]
     public static partial long GetLengthInPcmFrames(SafeDecoderHandle decoder);
 
     [LibraryImport(LibraryName, EntryPoint = "sf_decoder_read_pcm_frames")]
-    public static partial FFmpegResult ReadPcmFrames(SafeDecoderHandle decoder, IntPtr pFramesOut, long frameCount, out long outFramesRead);
+    public static partial FFmpegResult ReadPcmFrames(SafeDecoderHandle decoder, IntPtr pFramesOut, long frameCount, out long outFramesRead, out long outStartFrameIndex);
 
     [LibraryImport(LibraryName, EntryPoint = "sf_decoder_seek_to_pcm_frame")]
     public static partial FFmpegResult SeekToPcmFrame(SafeDecoderHandle decoder, long frameIndex);

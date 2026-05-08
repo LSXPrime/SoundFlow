@@ -117,7 +117,8 @@ SF_FFMPEG_API SF_Decoder* sf_decoder_create() {
 
 SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback onRead, sf_seek_callback onSeek, void* pUserData,
                                         SFSampleFormat target_format, SFSampleFormat* out_native_format,
-                                        uint32_t* out_channels, uint32_t* out_samplerate) {
+                                        uint32_t* out_channels, uint32_t* out_samplerate,
+                                        int32_t* out_time_base_num, int32_t* out_time_base_den) {
     if (!decoder) return SF_RESULT_ERROR_INVALID_ARGS;
 
     // Set FFmpeg to only log errors
@@ -186,6 +187,9 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     decoder->frame = av_frame_alloc();
     if (!decoder->packet || !decoder->frame) return SF_RESULT_DECODER_ERROR_PACKET_FRAME_ALLOC;
 
+    *out_time_base_num = decoder->codec_ctx->time_base.num;
+    *out_time_base_den = decoder->codec_ctx->time_base.den;
+
     return SF_RESULT_SUCCESS;
 }
 
@@ -202,26 +206,36 @@ SF_FFMPEG_API int64_t sf_decoder_get_length_in_pcm_frames(SF_Decoder* decoder) {
     return 0;
 }
 
-SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pFramesOut, int64_t frameCount, int64_t* out_frames_read) {
+SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pFramesOut, int64_t frameCount, int64_t* out_frames_read,
+    int64_t* out_start_frameIndex) {
     if (!decoder || !pFramesOut || !out_frames_read || frameCount <= 0) return SF_RESULT_ERROR_INVALID_ARGS;
 
     *out_frames_read = 0;
+    *out_start_frameIndex = -1;
     uint8_t* out_ptr[] = { (uint8_t*)pFramesOut };
     int64_t frames_read = 0;
     int draining = 0;
 
+    int64_t latestPts = -1;
+    int64_t startPts = PTS_UNINITIALIZED;
+
     while (frames_read < frameCount) {
         // Check if the resampler has data buffered from previous calls.
         if (swr_get_out_samples(decoder->swr_ctx, 0) > 0) {
+
             // Call swr_convert with NULL input to flush/read buffered data
             int out_samples = swr_convert(decoder->swr_ctx,
-                                         out_ptr,
-                                         (int)(frameCount - frames_read),
-                                         NULL, 0);
+                out_ptr,
+                (int)(frameCount - frames_read),
+                NULL, 0);
 
             if (out_samples > 0) {
                 out_ptr[0] += out_samples * decoder->target_channels * decoder->target_bytes_per_sample;
                 frames_read += out_samples;
+
+                // If this is the first chunk of data we actually decoded, store the pts of the start
+                if (startPts == PTS_UNINITIALIZED)
+                    startPts = latestPts;
 
                 // If we filled the user buffer, we are done for this call.
                 if (frames_read >= frameCount) break;
@@ -234,14 +248,18 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
         if (ret == 0) {
             // Resample the frame to target format
             int out_samples = swr_convert(decoder->swr_ctx,
-                                         out_ptr,
-                                         (int)(frameCount - frames_read),
-                                         (const uint8_t**)decoder->frame->data,
-                                         decoder->frame->nb_samples);
+                out_ptr,
+                (int)(frameCount - frames_read),
+                (const uint8_t**)decoder->frame->data,
+                decoder->frame->nb_samples);
 
             if (out_samples > 0) {
                 out_ptr[0] += out_samples * decoder->target_channels * decoder->target_bytes_per_sample;
                 frames_read += out_samples;
+
+                // If this is the first chunk of data we actually decoded, store the pts of the start
+                if (startPts == PTS_UNINITIALIZED)
+                    startPts = latestPts;
             }
             av_frame_unref(decoder->frame);
             continue;
@@ -251,12 +269,16 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
             int flushed_samples;
             do {
                 flushed_samples = swr_convert(decoder->swr_ctx,
-                                             out_ptr,
-                                             (int)(frameCount - frames_read),
-                                             NULL, 0);
+                    out_ptr,
+                    (int)(frameCount - frames_read),
+                    NULL, 0);
                 if (flushed_samples > 0) {
                     out_ptr[0] += flushed_samples * decoder->target_channels * decoder->target_bytes_per_sample;
                     frames_read += flushed_samples;
+
+                    // If this is the first chunk of data we actually decoded, store the pts of the start
+                    if (startPts == PTS_UNINITIALIZED)
+                        startPts = latestPts;
                 }
             } while (flushed_samples > 0 && frames_read < frameCount);
 
@@ -280,7 +302,12 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
         int read_ret = av_read_frame(decoder->format_ctx, decoder->packet);
 
         if (read_ret == 0) {
+
             if (decoder->packet->stream_index == decoder->stream_index) {
+                // Store the pts of the current packet
+                // This is important so we can indicate which pts are the decoded data from
+                latestPts = decoder->packet->pts;
+
                 if (avcodec_send_packet(decoder->codec_ctx, decoder->packet) < 0) {
                     av_packet_unref(decoder->packet);
                     *out_frames_read = frames_read;
@@ -302,6 +329,16 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
     }
 
     *out_frames_read = frames_read;
+
+    // Convert the start pts to frame index
+    if (startPts == PTS_UNINITIALIZED || startPts < 0)
+        *out_start_frameIndex = -1;
+    else
+    {
+        AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
+        *out_start_frameIndex = av_rescale_q(startPts, stream->time_base, (AVRational) { 1, stream->codecpar->sample_rate });
+    }
+
     return SF_RESULT_SUCCESS;
 }
 
@@ -311,25 +348,14 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
     AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
     int64_t timestamp = av_rescale_q(frameIndex, (AVRational){1, stream->codecpar->sample_rate}, stream->time_base);
 
-    // Flush buffers and seek
-    avcodec_flush_buffers(decoder->codec_ctx);
-    swr_init(decoder->swr_ctx);  // Reset resampler state
-
     int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, timestamp, AVSEEK_FLAG_BACKWARD);
     if (ret < 0) {
         return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
     }
 
-    // Read and discard packets until we reach the desired position
-    AVPacket* pkt = av_packet_alloc();
-    while (av_read_frame(decoder->format_ctx, pkt) >= 0) {
-        if (pkt->stream_index == decoder->stream_index) {
-            av_packet_unref(pkt);
-            break;
-        }
-        av_packet_unref(pkt);
-    }
-    av_packet_free(&pkt);
+    // Flush buffers and seek
+    avcodec_flush_buffers(decoder->codec_ctx);
+    swr_init(decoder->swr_ctx);
 
     return SF_RESULT_SUCCESS;
 }

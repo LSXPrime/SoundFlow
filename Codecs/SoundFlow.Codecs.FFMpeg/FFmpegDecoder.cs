@@ -19,6 +19,8 @@ internal sealed class FFmpegDecoder : ISoundDecoder
     private readonly FFmpeg.ReadCallback _readCallback;
     private readonly FFmpeg.SeekCallback _seekCallback;
 
+    private int? _pendingSeekOffset;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="FFmpegDecoder"/> class.
     /// </summary>
@@ -36,7 +38,10 @@ internal sealed class FFmpegDecoder : ISoundDecoder
             throw new InvalidOperationException("Failed to create FFmpeg decoder handle.");
 
         var result = FFmpeg.InitializeDecoder(_handle, _readCallback, _seekCallback, IntPtr.Zero,
-            targetFormat.Format, out var nativeFormat, out var channels, out var sampleRate);
+            targetFormat.Format, out var nativeFormat, out var channels, out var sampleRate,
+            out var timebaseNum, out var timebaseDen);
+
+        //Console.WriteLine($"Timebase {timebaseNum} / {timebaseDen}");
 
         if (result != FFmpegResult.Success)
         {
@@ -84,19 +89,92 @@ internal sealed class FFmpegDecoder : ISoundDecoder
     {
         if (IsDisposed || samples.IsEmpty) return 0;
 
-        var framesToRead = samples.Length / Channels;
-        long framesRead;
+        long framesToRead = samples.Length / Channels;
 
-        fixed (float* pSamples = samples)
+        long totalFramesRead = 0;
+        long framePosition = -1;
+        long backwardsCompensation = 1024;
+
+        do
         {
-            var result = FFmpeg.ReadPcmFrames(_handle, (IntPtr)pSamples, framesToRead, out framesRead);
-            if (result != FFmpegResult.Success)
+            fixed (float* pSamples = samples)
             {
-                throw new FFmpegException(result, $"An unrecoverable error occurred during decoding. Result: {result}");
+                var result = FFmpeg.ReadPcmFrames(_handle, (IntPtr)pSamples, framesToRead, out var framesRead, out var startFrameIndex);
+                if (result != FFmpegResult.Success)
+                {
+                    throw new FFmpegException(result, $"An unrecoverable error occurred during decoding. Result: {result}");
+                }
+
+                // If we reached the end, we just stop
+                if (framesRead == 0)
+                    break;
+
+                if(_pendingSeekOffset != null)
+                {
+                    // Initialize the frame position if it hasn't been
+                    // We're only guaranteed to have startFrameIndex immediately after the seek, so afterwards we need to keep track
+                    // of it ourselves
+                    if(framePosition < 0)
+                    {
+                        // If there's a precise seek pending, the decoder is expected to provide startFrameIndex, so we know how many samples we need to skip
+                        // If that hasn't been provided, something went wrong inside of the decoder
+                        if (startFrameIndex < 0)
+                            throw new FFmpegException(result, $"Pending seek to location {_pendingSeekOffset}, but failed to retrieve startFrameIndex");
+
+                        framePosition = startFrameIndex;
+
+                        if (framePosition > _pendingSeekOffset.Value)
+                        {
+                            // The frame position is ahead of what we asked for.
+                            // This is probably because the seek went too far ahead with the "priming packet"
+                            // We need to compensate and re-seek further backwards and then work our way towards this packets
+                            result = FFmpeg.SeekToPcmFrame(_handle, framePosition - backwardsCompensation);
+                            backwardsCompensation *= 2;
+
+                            if (result != FFmpegResult.Success)
+                                throw new FFmpegException(result, $"Failed to re-seek backwards. Pending offset: {_pendingSeekOffset}");
+
+                            // Reset this, because we're seeking back again
+                            framePosition = -1;
+
+                            continue;
+                        }
+                    }
+
+                    // Compute how many frames we need to discard
+                    var skip = Math.Max(0, _pendingSeekOffset.Value - framePosition);
+
+                    // Adjust for number of samples by channels (the value is frames)
+                    var skipSamples = skip * Channels;
+
+                    if(skipSamples < samples.Length)
+                    {
+                        // We have some valid data in the buffer! We just need to move this back to the front and then read the rest
+                        var validSamples = samples.Slice((int)skipSamples);
+                        validSamples.CopyTo(samples);
+
+                        // Trim the samples so we can read the rest
+                        samples = samples.Slice(validSamples.Length);
+                    }
+
+                    // Advance the position by however many frames we have read
+                    framePosition += framesRead;
+
+                    // Adjust the frames read by skipped samples
+                    framesRead -= skip;
+                    framesRead = Math.Max(framesRead, 0);
+                }
+
+                totalFramesRead += framesRead;
+                framesToRead -= framesRead;
             }
         }
-        
-        var samplesRead = (int)framesRead * Channels;
+        while (framesToRead > 0);
+
+        // We've done the read, the seek should be resolved at this point
+        _pendingSeekOffset = null;
+
+        var samplesRead = (int)totalFramesRead * Channels;
         if (samplesRead == 0)
         {
             EndOfStreamReached?.Invoke(this, EventArgs.Empty);
@@ -106,13 +184,27 @@ internal sealed class FFmpegDecoder : ISoundDecoder
     }
 
     /// <inheritdoc />
-    public bool Seek(int sampleOffset)
+    public bool Seek(int sampleOffset) => SeekInternal(sampleOffset, false);
+
+    /// <inheritdoc />
+    public bool PreciseSeek(int sampleOffset) => SeekInternal(sampleOffset, true);
+
+    private bool SeekInternal(int sampleOffset, bool precise)
     {
         if (IsDisposed || !_stream.CanSeek) return false;
 
         var frameIndex = sampleOffset / Channels;
         var result = FFmpeg.SeekToPcmFrame(_handle, frameIndex);
-        return result == FFmpegResult.Success;
+
+        if (result != FFmpegResult.Success)
+            return false;
+
+        if (precise)
+            _pendingSeekOffset = frameIndex;
+        else
+            _pendingSeekOffset = null;
+
+        return true;
     }
 
     private unsafe nuint OnRead(IntPtr pUserData, IntPtr pBuffer, nuint bytesToRead)

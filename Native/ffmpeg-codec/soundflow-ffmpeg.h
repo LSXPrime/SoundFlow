@@ -78,12 +78,14 @@ SF_FFMPEG_API SF_Result sf_decoder_init(
     void* pUserData,
     SFSampleFormat target_format,       // The target output format
     SFSampleFormat* out_native_format,  // The original format of the file
-    uint32_t* out_channels, uint32_t* out_samplerate);
+    uint32_t* out_channels, uint32_t* out_samplerate,
+    int32_t* out_time_base_num, int32_t* out_time_base_den);
 SF_FFMPEG_API int64_t sf_decoder_get_length_in_pcm_frames(SF_Decoder* decoder);
 SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder,
                                                    void* pFramesOut,
                                                    int64_t frameCount,
-                                                   int64_t* out_frames_read);
+                                                   int64_t* out_frames_read,
+                                                   int64_t* out_start_frameIndex);
 SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder,
                                                      int64_t frameIndex);
 SF_FFMPEG_API void sf_decoder_free(SF_Decoder* decoder);
@@ -103,6 +105,8 @@ SF_FFMPEG_API void sf_encoder_free(SF_Encoder* encoder);
 
 // Helper Functions
 SF_FFMPEG_API const char* sf_result_to_string(SF_Result result);
+
+#define PTS_UNINITIALIZED -8
 
 #ifdef __cplusplus
 }
