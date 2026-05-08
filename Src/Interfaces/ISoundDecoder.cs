@@ -36,10 +36,20 @@ public interface ISoundDecoder : IDisposable
 
     /// <summary>
     ///     Seeks the decoder to a desired sample position from the beginning of the audio data.
+    ///     This is not guaranteed to be precise and can seek to the nearest audio block.
     /// </summary>
     /// <param name="offset">Some offset in samples.</param>
     /// <returns>True, if seeking is possible and was successful.</returns>
     bool Seek(int offset);
+
+    /// <summary>
+    ///     Seeks the decoder to a desired sample position from the beginning of the audio data.
+    ///     This function is guaranteed to seek precisely to given sample offset, at some extra computational cost
+    ///     needed to discard the unecessary frames.
+    /// </summary>
+    /// <param name="offset">Some offset in samples.</param>
+    /// <returns>True, if seeking is possible and was successful.</returns>
+    bool PreciseSeek(int offset);
 
     /// <summary>
     ///     Decodes the next block of samples, writing samples into <paramref name="samples" />.
