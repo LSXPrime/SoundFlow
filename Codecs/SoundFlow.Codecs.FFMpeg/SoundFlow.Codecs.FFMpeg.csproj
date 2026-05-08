@@ -8,7 +8,7 @@
         <IsAotCompatible>true</IsAotCompatible>
         <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
         <Title>SoundFlow FFmpeg Codecs</Title>
-        <PackageId>SoundFlow.Codecs.FFMpeg</PackageId>
+        <PackageId>YellowDogMan.SoundFlow.Codecs.FFMpeg</PackageId>
         <Version>1.4.0</Version>
         <Description>Provides FFmpeg-based audio codecs (MP3, AAC, OGG, Opus, etc.) for the SoundFlow audio engine.</Description>
         <PackageTags>soundflow;audio;codec;ffmpeg;mp3;aac;ogg;opus</PackageTags>
@@ -22,7 +22,6 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageReleaseNotes>https://github.com/LSXPrime/SoundFlow/releases</PackageReleaseNotes>
         <Company>LSXPrime</Company>
-        <AssemblyName>YellowDogMan.SoundFlow.Codecs.FFMpeg</AssemblyName>
     </PropertyGroup>
 
     <ItemGroup>
