@@ -78,7 +78,8 @@ SF_FFMPEG_API SF_Result sf_decoder_init(
     void* pUserData,
     SFSampleFormat target_format,       // The target output format
     SFSampleFormat* out_native_format,  // The original format of the file
-    uint32_t* out_channels, uint32_t* out_samplerate);
+    uint32_t* out_channels, uint32_t* out_samplerate,
+    int32_t* out_time_base_num, int32_t* out_time_base_den);
 SF_FFMPEG_API int64_t sf_decoder_get_length_in_pcm_frames(SF_Decoder* decoder);
 SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder,
                                                    void* pFramesOut,

@@ -117,7 +117,8 @@ SF_FFMPEG_API SF_Decoder* sf_decoder_create() {
 
 SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback onRead, sf_seek_callback onSeek, void* pUserData,
                                         SFSampleFormat target_format, SFSampleFormat* out_native_format,
-                                        uint32_t* out_channels, uint32_t* out_samplerate) {
+                                        uint32_t* out_channels, uint32_t* out_samplerate,
+                                        int32_t* out_time_base_num, int32_t* out_time_base_den) {
     if (!decoder) return SF_RESULT_ERROR_INVALID_ARGS;
 
     // Set FFmpeg to only log errors
@@ -185,6 +186,11 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     decoder->packet = av_packet_alloc();
     decoder->frame = av_frame_alloc();
     if (!decoder->packet || !decoder->frame) return SF_RESULT_DECODER_ERROR_PACKET_FRAME_ALLOC;
+
+    AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
+
+    *out_time_base_num = > stream->time_base->num;
+    *out_time_base_den = > stream->time_base->den;
 
     return SF_RESULT_SUCCESS;
 }
