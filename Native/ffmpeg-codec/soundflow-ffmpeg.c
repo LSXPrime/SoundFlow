@@ -160,6 +160,9 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     const AVCodec* codec = avcodec_find_decoder(stream->codecpar->codec_id);
     if (!codec) return SF_RESULT_DECODER_ERROR_CODEC_NOT_FOUND;
 
+    *out_time_base_num = stream->time_base.num;
+    *out_time_base_den = stream->time_base.den;
+
     decoder->codec_ctx = avcodec_alloc_context3(codec);
     if (!decoder->codec_ctx) return SF_RESULT_DECODER_ERROR_CODEC_CONTEXT_ALLOC;
 
@@ -186,11 +189,6 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     decoder->packet = av_packet_alloc();
     decoder->frame = av_frame_alloc();
     if (!decoder->packet || !decoder->frame) return SF_RESULT_DECODER_ERROR_PACKET_FRAME_ALLOC;
-
-    AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
-
-    *out_time_base_num = stream->time_base.num;
-    *out_time_base_den = stream->time_base.den;
 
     return SF_RESULT_SUCCESS;
 }
