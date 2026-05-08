@@ -189,8 +189,8 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
 
     AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
 
-    *out_time_base_num = > stream->time_base->num;
-    *out_time_base_den = > stream->time_base->den;
+    *out_time_base_num = stream->time_base->num;
+    *out_time_base_den = stream->time_base->den;
 
     return SF_RESULT_SUCCESS;
 }
