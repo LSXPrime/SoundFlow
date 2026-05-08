@@ -42,7 +42,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Include="$(PackageId).targets" Pack="true" PackagePath="" />
+        <None Include="SoundFlow.Codecs.FFMpeg.targets" Pack="true" PackagePath="" />
         <None Include="runtimes\**\*" Pack="true" PackagePath="runtimes" />
     </ItemGroup>
 
