@@ -31,7 +31,7 @@ jobs:
       - name: 'Build NuGet'
         uses: Yellow-Dog-Man/composite-actions-templates/.github/actions/dotnet-build@9ecab12bbf1b40d14409bbaa13cb4f2ddb1ceb60 # main
         with:
-          dotnet-build-args: ${{ env.IS_RELEASE == 'true' && '-p:Version=${{ github.ref_name }} -o nupkgs' || '-o nupkgs' }}
+          dotnet-build-args: ${{ env.IS_RELEASE == 'true' && format('-p:Version={0} -o nupkgs', github.ref_name) || '-o nupkgs' }}
           dotnet-project-path: '${{ matrix.project }}'
           dotnet-build-type: 'pack'
 
