@@ -348,20 +348,16 @@ SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_
     AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
     int64_t timestamp = av_rescale_q(frameIndex, (AVRational){1, stream->codecpar->sample_rate}, stream->time_base);
 
-    // Flush buffers and seek
-    avcodec_flush_buffers(decoder->codec_ctx);
-    avformat_flush(decoder->format_ctx);
-    avio_flush(decoder->format_ctx->pb);
-
-    swr_close(decoder->swr_ctx);
-    if (swr_init(decoder->swr_ctx) < 0) {
-        return SF_RESULT_DECODER_ERROR_RESAMPLER_INIT_FAILED;
-    }
-
     int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, timestamp, AVSEEK_FLAG_BACKWARD);
     if (ret < 0) {
         return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
     }
+
+    // Flush buffers and seek
+    avcodec_flush_buffers(decoder->codec_ctx);
+
+    swr_close(decoder->swr_ctx);
+    swr_init(decoder->swr_ctx)
 
     return SF_RESULT_SUCCESS;
 }
