@@ -90,6 +90,7 @@ internal sealed class FFmpegDecoder : ISoundDecoder
 
         long totalFramesRead = 0;
         long framePosition = -1;
+        long backwardsCompensation = 1024;
 
         do
         {
@@ -124,9 +125,8 @@ internal sealed class FFmpegDecoder : ISoundDecoder
                             // The frame position is ahead of what we asked for.
                             // This is probably because the seek went too far ahead with the "priming packet"
                             // We need to compensate and re-seek further backwards and then work our way towards this packets
-                            var offset = framePosition - _pendingSeekOffset.Value;
-
-                            result = FFmpeg.SeekToPcmFrame(_handle, _pendingSeekOffset.Value - offset);
+                            result = FFmpeg.SeekToPcmFrame(_handle, framePosition - backwardsCompensation);
+                            backwardsCompensation *= 2;
 
                             if (result != FFmpegResult.Success)
                                 throw new FFmpegException(result, $"Failed to re-seek backwards. Pending offset: {_pendingSeekOffset}");
