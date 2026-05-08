@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.5.11723.231 stable
+VisualStudioVersion = 18.5.11723.231
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow", "Src\SoundFlow.csproj", "{D4326C2E-CDB3-47D4-8116-BB3872E81323}"
 EndProject
@@ -48,8 +48,6 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.Security.Authentication", "Samples\SoundFlow.Samples.Security.Authentication\SoundFlow.Samples.Security.Authentication.csproj", "{DD934AB4-CD4F-427C-9367-3A48C1156783}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.Recording", "Samples\SoundFlow.Samples.Recording\SoundFlow.Samples.Recording.csproj", "{C51F35EF-3C8F-4865-A51A-99AF616191C3}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Test", "Test\Test.csproj", "{51A8C305-2106-4685-913C-E7496ADD79F4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -129,10 +127,6 @@ Global
 		{C51F35EF-3C8F-4865-A51A-99AF616191C3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C51F35EF-3C8F-4865-A51A-99AF616191C3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C51F35EF-3C8F-4865-A51A-99AF616191C3}.Release|Any CPU.Build.0 = Release|Any CPU
-		{51A8C305-2106-4685-913C-E7496ADD79F4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{51A8C305-2106-4685-913C-E7496ADD79F4}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{51A8C305-2106-4685-913C-E7496ADD79F4}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{51A8C305-2106-4685-913C-E7496ADD79F4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
