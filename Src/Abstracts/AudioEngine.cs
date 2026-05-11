@@ -100,20 +100,20 @@ public abstract class AudioEngine : IDisposable
     /// For internal use by audio device implementations. Raises the <see cref="DeviceStarted"/> event.
     /// </summary>
     /// <param name="device">The device that has started.</param>
-    internal void RaiseDeviceStarted(AudioDevice device) => DeviceStarted?.Invoke(this, new DeviceEventArgs(device));
+    public void RaiseDeviceStarted(AudioDevice device) => DeviceStarted?.Invoke(this, new DeviceEventArgs(device));
 
     /// <summary>
     /// For internal use by audio device implementations. Raises the <see cref="DeviceStopped"/> event.
     /// </summary>
     /// <param name="device">The device that has stopped.</param>
-    internal void RaiseDeviceStopped(AudioDevice device) => DeviceStopped?.Invoke(this, new DeviceEventArgs(device));
+    public void RaiseDeviceStopped(AudioDevice device) => DeviceStopped?.Invoke(this, new DeviceEventArgs(device));
 
     /// <summary>
     /// For internal use by audio device implementations. Raises the <see cref="AudioFramesRendered"/> event
     /// using a reusable EventArgs object to avoid allocation overhead in the hot path.
     /// </summary>
     /// <param name="args">The cached event arguments object.</param>
-    internal void RaiseAudioFramesRendered(AudioFramesRenderedEventArgs args) => 
+    public void RaiseAudioFramesRendered(AudioFramesRenderedEventArgs args) => 
         AudioFramesRendered?.Invoke(this, args);
 
     #endregion

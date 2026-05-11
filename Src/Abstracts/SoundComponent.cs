@@ -378,7 +378,22 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
         }
     }
 
-    internal void Process(Span<float> outputBuffer, int channels)
+    /// <summary>
+    /// Processes the audio data through the component.
+    /// This method is called by the audio engine for each buffer of audio data.
+    /// The component processes the audio data by reading the audio data from the component's inputs,
+    /// generating new audio data, and applying any enabled modifiers and analyzers.
+    /// The processed audio data is then mixed into the <paramref name="outputBuffer"/>.
+    /// </summary>
+    /// <param name="outputBuffer">The buffer to mix the processed audio data into.</param>
+    /// <param name="channels">The number of channels in the <paramref name="outputBuffer"/>.</param>
+    /// <remarks>
+    /// The <paramref name="outputBuffer"/> is cleared before the audio data is processed but not after.
+    /// This method is for internal use only to allow custom audio engine implementations 
+    /// to manually drive component processing. Do not call from application code; use 
+    /// component connection graphs instead.
+    /// </remarks>
+    public void Process(Span<float> outputBuffer, int channels)
     {
         if (!Enabled || Mute || IsDisposed) return;
 
@@ -570,7 +585,7 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
     }
 
     /// <summary>
-    ///     Releases unmanaged and - optionally - managed resources.
+    ///     Releases unmanaged and managed resources.
     /// </summary>
     /// <param name="disposing"><c>true</c> to release both managed and unmanaged resources; <c>false</c> to release only unmanaged resources.</param>
     protected virtual void Dispose(bool disposing)

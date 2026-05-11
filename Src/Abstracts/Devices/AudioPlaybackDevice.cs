@@ -18,7 +18,7 @@ public abstract class AudioPlaybackDevice : AudioDevice
     /// <summary>
     /// Cached event args object to prevent GC allocations every frame.
     /// </summary>
-    internal readonly AudioFramesRenderedEventArgs CachedRenderEventArgs;
+    protected readonly AudioFramesRenderedEventArgs CachedRenderEventArgs;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AudioPlaybackDevice"/> class.
