@@ -42,13 +42,13 @@ jobs:
           dotnet-build-type: 'pack'
 
       - name: 'Download ffmpeg libs'
-        if: ${{ contains(matrix.project, "SoundFlow.Codecs.FFMpeg.csproj") }}
+        if: ${{ contains(matrix.project, 'SoundFlow.Codecs.FFMpeg.csproj') }}
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           artifact-ids: needs.build-ffmpeg.outputs.packageid
 
       - name: 'Update ffmpeg libs'
-        if: ${{ contains(matrix.project, "SoundFlow.Codecs.FFMpeg.csproj") }}
+        if: ${{ contains(matrix.project, 'SoundFlow.Codecs.FFMpeg.csproj') }}
         run: |
           unzip soundflow-ffmpeg-runtimes.zip
           rm -rf "${{ github.workspace }}/Codecs/SoundFlow.Codecs.FFMpeg/runtimes"
