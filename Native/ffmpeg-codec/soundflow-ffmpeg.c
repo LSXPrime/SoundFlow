@@ -216,7 +216,6 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
     int64_t frames_read = 0;
     int draining = 0;
 
-    int64_t latestPts = -1;
     int64_t startPts = PTS_UNINITIALIZED;
 
     while (frames_read < frameCount) {
@@ -233,10 +232,6 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                 out_ptr[0] += out_samples * decoder->target_channels * decoder->target_bytes_per_sample;
                 frames_read += out_samples;
 
-                // If this is the first chunk of data we actually decoded, store the pts of the start
-                if (startPts == PTS_UNINITIALIZED)
-                    startPts = latestPts;
-
                 // If we filled the user buffer, we are done for this call.
                 if (frames_read >= frameCount) break;
             }
@@ -246,6 +241,11 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
         int ret = avcodec_receive_frame(decoder->codec_ctx, decoder->frame);
 
         if (ret == 0) {
+
+            // If this is the first chunk of data we actually decoded, store the pts of the start
+            if (startPts == PTS_UNINITIALIZED)
+                startPts = decoder->frame->pts;
+
             // Resample the frame to target format
             int out_samples = swr_convert(decoder->swr_ctx,
                 out_ptr,
@@ -256,10 +256,6 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
             if (out_samples > 0) {
                 out_ptr[0] += out_samples * decoder->target_channels * decoder->target_bytes_per_sample;
                 frames_read += out_samples;
-
-                // If this is the first chunk of data we actually decoded, store the pts of the start
-                if (startPts == PTS_UNINITIALIZED)
-                    startPts = latestPts;
             }
             av_frame_unref(decoder->frame);
             continue;
@@ -275,10 +271,6 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                 if (flushed_samples > 0) {
                     out_ptr[0] += flushed_samples * decoder->target_channels * decoder->target_bytes_per_sample;
                     frames_read += flushed_samples;
-
-                    // If this is the first chunk of data we actually decoded, store the pts of the start
-                    if (startPts == PTS_UNINITIALIZED)
-                        startPts = latestPts;
                 }
             } while (flushed_samples > 0 && frames_read < frameCount);
 
@@ -304,9 +296,6 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
         if (read_ret == 0) {
 
             if (decoder->packet->stream_index == decoder->stream_index) {
-                // Store the pts of the current packet
-                // This is important so we can indicate which pts are the decoded data from
-                latestPts = decoder->packet->pts;
 
                 if (avcodec_send_packet(decoder->codec_ctx, decoder->packet) < 0) {
                     av_packet_unref(decoder->packet);
