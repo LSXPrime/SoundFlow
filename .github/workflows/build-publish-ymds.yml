@@ -10,7 +10,7 @@ on:
 
 jobs:
   build-ffmpeg:
-    uses: ./.github/workflows/build-ffmpeg.yml@master
+    uses: ./.github/workflows/build-ffmpeg.yml
 
   build-solution:
     name: 'Build solution and publish'
