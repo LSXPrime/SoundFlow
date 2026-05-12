@@ -2,6 +2,11 @@ name: Build FFmpeg Codec Integration
 
 on:
   workflow_dispatch:
+  workflow_call:
+    outputs:
+      packageid:
+        description: 'Package ID for artifact'
+        value: ${{ jobs.package-artifacts.outputs.package-artifacts }}
 
 # Cancel in-progress runs on new commits to the same branch
 concurrency:
@@ -402,6 +407,10 @@ jobs:
       - build-android
       - build-freebsd
       - build-ios
+
+    outputs:
+      package-artifacts: ${{ steps.artifact-package.outputs.artifact-id }}
+
     steps:
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
@@ -438,6 +447,7 @@ jobs:
 
       - name: Upload final archive
         uses: actions/upload-artifact@v4
+        id: artifact-package
         with:
           name: soundflow-ffmpeg-runtimes
           path: soundflow-ffmpeg-runtimes.zip

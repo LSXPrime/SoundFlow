@@ -9,6 +9,9 @@ on:
       - published
 
 jobs:
+  build-ffmpeg:
+    uses: ./.github/workflows/build-ffmpeg.yml@master
+
   build-solution:
     name: 'Build solution and publish'
     runs-on: ubuntu-latest
@@ -24,6 +27,9 @@ jobs:
     env:
       IS_RELEASE: ${{ github.event_name == 'release' && github.event.action == 'published' }}
 
+    needs:
+      - build-ffmpeg
+
     steps:
       - name: 'Checkout repository'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -34,6 +40,19 @@ jobs:
           dotnet-build-args: ${{ env.IS_RELEASE == 'true' && format('-p:Version={0} -o nupkgs', github.ref_name) || '-o nupkgs' }}
           dotnet-project-path: '${{ matrix.project }}'
           dotnet-build-type: 'pack'
+
+      - name: 'Download ffmpeg libs'
+        if: ${{ contains(matrix.project, "SoundFlow.Codecs.FFMpeg.csproj") }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: needs.build-ffmpeg.outputs.packageid
+
+      - name: 'Update ffmpeg libs'
+        if: ${{ contains(matrix.project, "SoundFlow.Codecs.FFMpeg.csproj") }}
+        run: |
+          unzip soundflow-ffmpeg-runtimes.zip
+          rm -rf "${{ github.workspace }}/Codecs/SoundFlow.Codecs.FFMpeg/runtimes"
+          mv runtimes "${{ github.workspace }}/Codecs/SoundFlow.Codecs.FFMpeg/"
 
       - name: 'Artifact naming'
         id: naming
