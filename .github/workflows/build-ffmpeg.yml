@@ -16,11 +16,11 @@ jobs:
       matrix:
         include:
           - arch: x64
-            os: windows-latest
+            os: windows-2025
             msystem: MINGW64
             mingw-package-prefix: mingw-w64-x86_64
           - arch: x86
-            os: windows-latest
+            os: windows-2025
             msystem: MINGW32
             mingw-package-prefix: mingw-w64-i686
           - arch: arm64
@@ -368,6 +368,29 @@ jobs:
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
           cmake --build . --parallel --verbose
+
+      - name: Patch Info.plist for App Store Validation
+        run: |
+          PLIST="build/runtimes/ios-arm64/native/soundflow-ffmpeg.framework/Info.plist"
+          if [ -f "$PLIST" ]; then
+            echo "Patching $PLIST to meet altool/App Store requirements..."
+          
+            # PlistBuddy is more reliable for CI scripting.
+            # 'Set' updates the key if it exists.
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.4.0" "$PLIST"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 1" "$PLIST"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleName SoundFlow FFmpeg" "$PLIST"
+          
+            # 'Add' creates the key if it doesn't exist (CMake sometimes omits MinimumOSVersion).
+            # We use '|| true' to ignore the error if it already exists.
+            /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string 12.0" "$PLIST" 2>/dev/null || true
+          
+            echo "Patched Info.plist contents:"
+            cat "$PLIST"
+          else
+            echo "Warning: Info.plist not found at expected path: $PLIST"
+          fi
+
       - name: Analyze Dependencies
         run: |
           ARTIFACT_DIR="build/runtimes/ios-arm64/native"

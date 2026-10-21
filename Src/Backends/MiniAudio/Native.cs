@@ -177,7 +177,7 @@ internal static unsafe partial class Native
     #region Decoder
 
     [LibraryImport(LibraryName, EntryPoint = "ma_decoder_init")]
-    public static partial MiniAudioResult DecoderInit(BufferProcessingCallback onRead, SeekCallback onSeekCallback, nint pUserData,
+    public static partial MiniAudioResult DecoderInit(BufferProcessingCallback onRead, SeekCallback? onSeekCallback, nint pUserData,
         nint pConfig, nint pDecoder);
 
     [LibraryImport(LibraryName, EntryPoint = "ma_decoder_uninit")]
@@ -242,7 +242,7 @@ internal static unsafe partial class Native
     public static partial nint AllocateDevice();
 
     [LibraryImport(LibraryName, EntryPoint = "sf_allocate_decoder_config")]
-    public static partial nint AllocateDecoderConfig(SampleFormat format, uint channels, uint sampleRate);
+    public static partial nint AllocateDecoderConfig(SampleFormat format, uint channels, uint sampleRate, uint seekPointCount);
 
     [LibraryImport(LibraryName, EntryPoint = "sf_allocate_encoder_config")]
     public static partial nint AllocateEncoderConfig(SampleFormat format, uint channels,

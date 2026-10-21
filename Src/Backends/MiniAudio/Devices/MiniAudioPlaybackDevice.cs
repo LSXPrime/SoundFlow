@@ -64,6 +64,9 @@ internal sealed class MiniAudioPlaybackDevice : AudioPlaybackDevice
         {
             var buffer = Extensions.GetSpan<float>(pOutput, length);
             ProcessAndFillBuffer(buffer, device.Format.Channels);
+            
+            // Raise the event to provide far-end audio data to subscribers (like WebRTC AEC)
+            InvokeOnAudioProcessed(buffer);
             return;
         }
 
@@ -76,7 +79,10 @@ internal sealed class MiniAudioPlaybackDevice : AudioPlaybackDevice
             // 1. Generate the audio signal into our temporary float buffer.
             ProcessAndFillBuffer(buffer, device.Format.Channels);
 
-            // 2. Convert the float buffer to the device's native format.
+            // 2. Raise the event to provide far-end audio data to subscribers (like WebRTC AEC)
+            InvokeOnAudioProcessed(buffer);
+
+            // 3. Convert the float buffer to the device's native format.
             DeviceBufferHelper.ConvertToDeviceFormat(buffer, pOutput, length, device.Format.Format);
         }
         finally

@@ -49,6 +49,14 @@ public abstract class AudioDevice : IDisposable
     public EventHandler? OnDisposed;
 
     /// <summary>
+    /// Occurs when audio samples are processed by this device.
+    /// For capture devices, this is raised when new audio is captured from the hardware.
+    /// For playback devices, this is raised after the master mixer renders the final output buffer,
+    /// just before it is sent to the hardware.
+    /// </summary>
+    public event AudioProcessCallback? OnAudioProcessed;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="AudioDevice"/> class.
     /// </summary>
     /// <param name="engine">The parent audio engine.</param>
@@ -76,6 +84,25 @@ public abstract class AudioDevice : IDisposable
     /// </summary>
     public abstract void Dispose();
     
+    /// <summary>
+    /// Invokes the <see cref="OnAudioProcessed"/> event with the processed samples.
+    /// This method is intended to be called by the backend implementation.
+    /// </summary>
+    /// <param name="samples">The processed audio samples.</param>
+    protected virtual void InvokeOnAudioProcessed(Span<float> samples)
+    {
+        OnAudioProcessed?.Invoke(samples, Capability);
+    }
+    
+    /// <summary>
+    /// Gets the invocation list of the OnAudioProcessed event. For internal engine use only.
+    /// </summary>
+    /// <returns>An array of delegates subscribed to the event.</returns>
+    internal virtual Delegate[] GetEventSubscribers()
+    {
+        return OnAudioProcessed?.GetInvocationList() ?? [];
+    }
+
     /// <summary>
     /// Called when the audio device is disposed.
     /// </summary>
