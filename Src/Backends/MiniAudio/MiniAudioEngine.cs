@@ -268,12 +268,18 @@ public class MiniAudioEngine : AudioEngine
         DeviceConfig? config = null)
     {
         var wasRunning = oldDevice.IsRunning;
+        
+        // Preserve both components and event subscribers
         var preservedComponents = DeviceSwitcher.PreservePlaybackState(oldDevice);
+        var preservedSubscribers = DeviceSwitcher.PreserveEventSubscribers(oldDevice);
 
         oldDevice.Dispose();
 
         var newDevice = InitializePlaybackDevice(newDeviceInfo, oldDevice.Format, config);
+        
+        // Restore state
         DeviceSwitcher.RestorePlaybackState(newDevice, preservedComponents);
+        DeviceSwitcher.RestoreEventSubscribers(newDevice, preservedSubscribers);
 
         if (wasRunning) newDevice.Start();
 
@@ -285,12 +291,12 @@ public class MiniAudioEngine : AudioEngine
         DeviceConfig? config = null)
     {
         var wasRunning = oldDevice.IsRunning;
-        var preservedSubscribers = DeviceSwitcher.PreserveCaptureState(oldDevice);
+        var preservedSubscribers = DeviceSwitcher.PreserveEventSubscribers(oldDevice);
 
         oldDevice.Dispose();
 
         var newDevice = InitializeCaptureDevice(newDeviceInfo, oldDevice.Format, config);
-        DeviceSwitcher.RestoreCaptureState(newDevice, preservedSubscribers);
+        DeviceSwitcher.RestoreEventSubscribers(newDevice, preservedSubscribers);
 
         if (wasRunning) newDevice.Start();
 
@@ -305,7 +311,8 @@ public class MiniAudioEngine : AudioEngine
 
         // Preserve state from both underlying devices
         var preservedComponents = DeviceSwitcher.PreservePlaybackState(oldDevice.PlaybackDevice);
-        var preservedSubscribers = DeviceSwitcher.PreserveCaptureState(oldDevice.CaptureDevice);
+        var preservedPlaybackSubscribers = DeviceSwitcher.PreserveEventSubscribers(oldDevice.PlaybackDevice);
+        var preservedCaptureSubscribers = DeviceSwitcher.PreserveEventSubscribers(oldDevice.CaptureDevice);
 
         // Use old device info if new info is not provided
         var playbackInfo = newPlaybackInfo ?? oldDevice.PlaybackDevice.Info;
@@ -317,7 +324,8 @@ public class MiniAudioEngine : AudioEngine
 
         // Restore state to the new underlying devices
         DeviceSwitcher.RestorePlaybackState(newDevice.PlaybackDevice, preservedComponents);
-        DeviceSwitcher.RestoreCaptureState(newDevice.CaptureDevice, preservedSubscribers);
+        DeviceSwitcher.RestoreEventSubscribers(newDevice.PlaybackDevice, preservedPlaybackSubscribers);
+        DeviceSwitcher.RestoreEventSubscribers(newDevice.CaptureDevice, preservedCaptureSubscribers);
 
         if (wasRunning) newDevice.Start();
 

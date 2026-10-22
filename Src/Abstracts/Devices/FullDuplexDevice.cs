@@ -27,12 +27,21 @@ public sealed class FullDuplexDevice : AudioDevice, IDisposable
     public Mixer MasterMixer => PlaybackDevice.MasterMixer;
     
     /// <summary>
-    /// Occurs when audio data is processed by the capture device.
+    /// Occurs when audio data is processed by either the capture or playback device.
+    /// Subscribers will receive both near-end (capture) and far-end (playback) frames.
     /// </summary>
-    public event AudioProcessCallback? OnAudioProcessed
+    public new event AudioProcessCallback? OnAudioProcessed
     {
-        add => CaptureDevice.OnAudioProcessed += value;
-        remove => CaptureDevice.OnAudioProcessed -= value;
+        add
+        {
+            CaptureDevice.OnAudioProcessed += value;
+            PlaybackDevice.OnAudioProcessed += value;
+        }
+        remove
+        {
+            CaptureDevice.OnAudioProcessed -= value;
+            PlaybackDevice.OnAudioProcessed -= value;
+        }
     }    
 
     /// <summary>
@@ -86,5 +95,13 @@ public sealed class FullDuplexDevice : AudioDevice, IDisposable
         OnDisposedHandler();
 
         IsDisposed = true;
+    }
+
+    /// <inheritdoc />
+    internal override Delegate[] GetEventSubscribers()
+    {
+        // Subscribers are routed to the child devices, so we retrieve them from there.
+        // Returning CaptureDevice's list is sufficient as both will have the same subscribers.
+        return CaptureDevice.GetEventSubscribers();
     }
 }

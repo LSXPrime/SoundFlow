@@ -12,17 +12,17 @@ jobs:
       matrix:
         include:
           # Windows (MSVC)
-          - os: windows-latest
+          - os: windows-2025
             rid: win-x64
             platform: Windows
             arch: x64
             cmake_generator_arch: x64
-          - os: windows-latest
+          - os: windows-2025
             rid: win-x86
             platform: Windows
             arch: x86
             cmake_generator_arch: Win32
-          - os: windows-latest
+          - os: windows-2025
             rid: win-arm64
             platform: Windows
             arch: ARM64
@@ -107,7 +107,7 @@ jobs:
         run: |
           CMAKE_ARGS=()
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            CMAKE_ARGS+=("-G" "Visual Studio 17 2022" "-A" "${{ matrix.cmake_generator_arch }}")
+            CMAKE_ARGS+=("-G" "Visual Studio 18 2026" "-A" "${{ matrix.cmake_generator_arch }}")
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
             CMAKE_ARGS+=("-DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }}")
           fi

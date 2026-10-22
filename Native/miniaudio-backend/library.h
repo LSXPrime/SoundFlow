@@ -111,7 +111,7 @@ MA_API ma_device_config *sf_allocate_device_config(ma_device_type deviceType, ma
 
 // Allocate memory for a decoder configuration struct.
 MA_API ma_decoder_config *sf_allocate_decoder_config(ma_format outputFormat, ma_uint32 outputChannels,
-                                                     ma_uint32 outputSampleRate);
+                                                     ma_uint32 outputSampleRate, ma_uint32 seekPointCount);
 
 // Allocate memory for an encoder configuration struct.
 MA_API ma_encoder_config *sf_allocate_encoder_config(ma_format format,

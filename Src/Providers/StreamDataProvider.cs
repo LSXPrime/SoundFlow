@@ -63,7 +63,7 @@ public sealed class StreamDataProvider : ISoundDataProvider
                     : TimeSpan.Zero
             };
         }
-        
+
         SampleRate = _decoder.SampleRate;
         _decoder.EndOfStreamReached += EndOfStreamReached;
     }
@@ -77,14 +77,14 @@ public sealed class StreamDataProvider : ISoundDataProvider
     public StreamDataProvider(AudioEngine engine, AudioFormat format, Stream stream)
     {
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
-        
+
         var formatInfoResult = SoundMetadataReader.Read(_stream, new ReadOptions
         {
-            ReadTags = false, 
-            ReadAlbumArt = false, 
+            ReadTags = false,
+            ReadAlbumArt = false,
             DurationAccuracy = DurationAccuracy.FastEstimate
         });
-        
+
         if (formatInfoResult is { IsSuccess: true, Value: not null })
         {
             // Path 1: Metadata read successfully. Use the discovered formatId with the user's target format.
@@ -97,7 +97,7 @@ public sealed class StreamDataProvider : ISoundDataProvider
             // Path 2: Metadata read failed. Fall back to probing, providing the user's format as a hint.
             _stream.Position = 0;
             _decoder = engine.CreateDecoder(_stream, out var detectedFormat, format);
-                
+
             // Create a basic FormatInfo from what the decoder found.
             FormatInfo = new SoundFormatInfo
             {
@@ -110,7 +110,7 @@ public sealed class StreamDataProvider : ISoundDataProvider
                     : TimeSpan.Zero
             };
         }
-        
+
         SampleRate = _decoder.SampleRate;
 
         _decoder.EndOfStreamReached += EndOfStreamReached;
@@ -119,10 +119,57 @@ public sealed class StreamDataProvider : ISoundDataProvider
     /// <inheritdoc />
     public int Position { get; private set; }
 
-    /// <inheritdoc />
-    public int Length => _decoder.Length > 0 || FormatInfo == null
-        ? _decoder.Length
-        : (int)(FormatInfo.Duration.TotalSeconds * FormatInfo.SampleRate * FormatInfo.ChannelCount);
+    /// <summary>
+    ///     Gets the total length of the audio data in samples.
+    /// </summary>
+    /// <remarks>
+    ///     Two independent length estimates are available at this layer:
+    ///     <list type="bullet">
+    ///         <item><c>_decoder.Length</c> — returned by the underlying codec (e.g. <c>ma_decoder_get_length_in_pcm_frames</c>).</item>
+    ///         <item><c>FormatInfo.Duration</c> — read by <see cref="SoundMetadataReader"/> from ID3/Xing/Info tags.</item>
+    ///     </list>
+    ///     Both can be wrong for VBR MP3s without a Xing/Info header, but they fail independently: the metadata
+    ///     reader and the codec use different parsing paths. When they disagree, we pick the <b>larger</b> value.
+    ///     A too-small length is far worse than a too-large one — it makes the displayed <c>Duration</c> lie,
+    ///     breaks seeking near the end, can trigger premature end-of-stream handling, and produces impossible
+    ///     states like <c>Time &gt; Duration</c>
+    /// </remarks>
+    public int Length
+    {
+        get
+        {
+            var decoderLength = _decoder.Length;
+            
+            int metadataLength;
+            if (FormatInfo != null
+                && FormatInfo.Duration > TimeSpan.Zero
+                && FormatInfo.SampleRate > 0
+                && FormatInfo.ChannelCount > 0)
+            {
+                var metadataLengthSamples = FormatInfo.Duration.TotalSeconds
+                                            * FormatInfo.SampleRate
+                                            * FormatInfo.ChannelCount;
+
+                if (metadataLengthSamples is >= 0 and <= int.MaxValue)
+                    metadataLength = (int)metadataLengthSamples;
+                else
+                    metadataLength = 0;
+            }
+            else
+            {
+                metadataLength = 0;
+            }
+
+            return decoderLength switch
+            {
+                // Prefer the larger value when both are available. See the XML doc above for the rationale.
+                // Special case: if one of them is 0 (unknown), use the other.
+                > 0 when metadataLength > 0 => Math.Max(decoderLength, metadataLength),
+                > 0 => decoderLength,
+                _ => metadataLength
+            };
+        }
+    }
 
     /// <inheritdoc />
     public bool CanSeek => _stream.CanSeek;

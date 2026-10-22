@@ -168,7 +168,7 @@ MA_API ma_device_config* sf_allocate_device_config(const ma_device_type deviceTy
 
 // Allocate memory for a decoder configuration struct.
 MA_API ma_decoder_config *sf_allocate_decoder_config(const ma_format outputFormat, const ma_uint32 outputChannels,
-                                                     const ma_uint32 outputSampleRate) {
+                                                     const ma_uint32 outputSampleRate, const ma_uint32 seekPointCount) {
     ma_decoder_config *pConfig = sf_create(ma_decoder_config);
     if (pConfig == NULL) {
         return NULL;
@@ -176,6 +176,8 @@ MA_API ma_decoder_config *sf_allocate_decoder_config(const ma_format outputForma
 
     MA_ZERO_OBJECT(pConfig);
     *pConfig = ma_decoder_config_init(outputFormat, outputChannels, outputSampleRate);
+
+    pConfig->seekPointCount = seekPointCount;
 
     return pConfig;
 }

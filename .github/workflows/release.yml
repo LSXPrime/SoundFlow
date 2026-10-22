@@ -52,6 +52,10 @@ jobs:
       inputs.release_webrtc == true ||
       inputs.release_portmidi == true
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -238,13 +242,23 @@ jobs:
             update_and_pack "Midi/SoundFlow.Midi.PortMidi/SoundFlow.Midi.PortMidi.csproj"
           fi
 
+      - name: NuGet login (OIDC -> temporary API key)
+        if: inputs.publish_to_nuget == true
+        uses: NuGet/login@v1
+        id: nuget_login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
       - name: Push Packages to NuGet.org
         if: inputs.publish_to_nuget == true
         run: |
           if [ -z "$(ls -A packages/*.nupkg 2>/dev/null)" ]; then
             echo "No packages were created. Skipping NuGet push."
           else
-            dotnet nuget push "packages/*.nupkg" --source "https://api.nuget.org/v3/index.json" --api-key ${{ secrets.NUGET_API_KEY }} --skip-duplicate
+            dotnet nuget push "packages/*.nupkg" \
+              --source "https://api.nuget.org/v3/index.json" \
+              --api-key ${{ steps.nuget_login.outputs.NUGET_API_KEY }} \
+              --skip-duplicate
           fi
 
       - name: Upload NuGet Packages as Artifact

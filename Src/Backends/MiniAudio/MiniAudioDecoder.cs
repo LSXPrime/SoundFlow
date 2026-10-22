@@ -17,7 +17,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
     
     // Keep references to delegates to prevent GC collection while native code uses them
     private readonly Native.BufferProcessingCallback _readCallback;
-    private readonly Native.SeekCallback _seekCallbackCallback;
+    private readonly Native.SeekCallback? _seekCallbackCallback;
     
     private bool _endOfStreamReached;
     private byte[]? _rentedReadBuffer;
@@ -30,32 +30,41 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
     /// <param name="sampleFormat">The format of the audio samples.</param>
     /// <param name="channels">The number of audio channels.</param>
     /// <param name="sampleRate">The sample rate of the audio.</param>
-    public MiniAudioDecoder(Stream stream, SampleFormat sampleFormat, int channels, int sampleRate)
+    /// <param name="seekPointCount">Controls how many seek points the decoder maintains internally</param>
+    public MiniAudioDecoder(Stream stream, SampleFormat sampleFormat, int channels, int sampleRate, uint seekPointCount = 100)    // 0 = disable, use binary search only)
     {
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
         SampleFormat = sampleFormat;
         Channels = channels;
         SampleRate = sampleRate;
-
-        var configPtr = Native.AllocateDecoderConfig(SampleFormat, (uint)Channels, (uint)SampleRate);
+        
+        var configPtr = Native.AllocateDecoderConfig(SampleFormat, (uint)Channels, (uint)SampleRate, seekPointCount);
 
         _decoder = Native.AllocateDecoder();
         
         // Store delegates in fields to prevent GC collection
         _readCallback = ReadCallback;
-        _seekCallbackCallback = SeekCallback;
+        
+        // Only assign and use the seek callback if the underlying stream supports seeking.
+        if (_stream.CanSeek)
+        {
+            _seekCallbackCallback = SeekCallback;
+        }
 
         var result = Native.DecoderInit(_readCallback, _seekCallbackCallback, nint.Zero, configPtr, _decoder);
         Native.Free(configPtr);
 
         if (result != MiniAudioResult.Success) 
             throw new MiniaudioException("MiniAudio", result, "Unable to initialize decoder.");
-
-        result = Native.DecoderGetLengthInPcmFrames(_decoder, out var length);
-        if (result != MiniAudioResult.Success) 
-            throw new MiniaudioException("MiniAudio", result, "Unable to get decoder length.");
         
-        Length = (int)length * Channels;
+        // Attempt to get the length. For some formats (like VBR MP3s without a Xing header), this may fail.
+        result = Native.DecoderGetLengthInPcmFrames(_decoder, out var length);
+        Length = result switch
+        {
+            MiniAudioResult.Success => (int)length * Channels,
+            _ => 0 // Length is unknown (e.g., VBR without Xing header or live stream)
+        };
+
         _endOfStreamReached = false;
     }
     
@@ -185,16 +194,10 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
     {
         lock (_syncLock)
         {
-            MiniAudioResult miniAudioResult;
-            if (Length == 0)
-            {
-                miniAudioResult = Native.DecoderGetLengthInPcmFrames(_decoder, out var length);
-                if (miniAudioResult != MiniAudioResult.Success || (int)length == 0) return false;
-                Length = (int)length * Channels;
-            }
-
+            // We don't strictly need the total length to seek if the stream is seekable.
+            // MiniAudio's internal decoder can binary search or scan.
             _endOfStreamReached = false;
-            miniAudioResult = Native.DecoderSeekToPcmFrame(_decoder, (ulong)(offset / Channels));
+            var miniAudioResult = Native.DecoderSeekToPcmFrame(_decoder, (ulong)(offset / Channels));
             return miniAudioResult == MiniAudioResult.Success;
         }
     }
@@ -271,23 +274,47 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
             lock (_syncLock)
             {
                 if (!_stream.CanSeek)
-                    return MiniAudioResult.NoDataAvailable;
-
-                // Basic bounds check to prevent seeking past EOF if stream supports Length
-                try 
                 {
-                    if (byteOffset >= 0 && byteOffset < _stream.Length - 1)
-                        _stream.Seek(byteOffset, point == SeekPoint.FromCurrent ? SeekOrigin.Current : SeekOrigin.Begin);
-                }
-                catch (NotSupportedException)
-                {
-                    // Some streams claim CanSeek but throw on Length or Position
-                    Log.Critical("Stream does not support seeking.");
                     return MiniAudioResult.InvalidOperation;
                 }
 
+                long streamLength = _stream.Length;
+                long targetOffset;
+
+                // MiniAudio's binary search uses relative offsets to seek backward.
+                // We must calculate the absolute target position first, clamp it, and then execute the seek.
+                if (point == SeekPoint.FromCurrent)
+                {
+                    long currentPos = _stream.Position;
+                    targetOffset = currentPos + byteOffset;
+                }
+                else
+                {
+                    targetOffset = byteOffset;
+                }
+
+                // Clamp targetOffset to stream bounds to prevent exceptions
+                if (targetOffset < 0)
+                {
+                    targetOffset = 0;
+                }
+                
+                if (streamLength > 0 && targetOffset > streamLength)
+                {
+                    // Allow seeking to the very end of the stream (streamLength) for EOF checks
+                    targetOffset = streamLength;
+                }
+
+                // Always use SeekOrigin.Begin with the absolute targetOffset to avoid relative offset no-op bugs
+                _stream.Seek(targetOffset, SeekOrigin.Begin);
                 return MiniAudioResult.Success;
             }
+        }
+        catch (NotSupportedException)
+        {
+            // Some streams claim CanSeek but throw on Length or Position
+            Log.Critical("Stream does not support seeking.");
+            return MiniAudioResult.InvalidOperation;
         }
         catch (Exception)
         {

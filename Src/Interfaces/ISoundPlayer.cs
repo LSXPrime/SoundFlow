@@ -25,8 +25,12 @@ public interface ISoundPlayer : IDisposable
     /// <summary>
     /// Gets or sets the playback speed of the sound player.
     /// A value of 1.0 represents normal speed. Values greater than 1.0 increase the speed, and values less than 1.0 decrease it.
+    /// Negative values (e.g., -1.0) indicate reverse playback. When playing in reverse, time-stretching (pitch preservation) 
+    /// is bypassed, and linear interpolation is used, which will affect the pitch.
     /// </summary>
-    /// <remarks>The current implementation uses linear interpolation which may affect the pitch.</remarks>
+    /// <remarks>
+    /// The current implementation uses linear interpolation for negative values which may affect the pitch.
+    /// </remarks>
      float PlaybackSpeed { get; set; }
     
     /// <summary>

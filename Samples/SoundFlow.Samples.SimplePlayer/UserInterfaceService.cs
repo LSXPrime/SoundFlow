@@ -29,11 +29,14 @@ public static class UserInterfaceService
                 Console.SetCursorPosition(0, Console.CursorTop);
                 Console.Write(new string(' ', Console.WindowWidth - 1)); // Clear the line
                 Console.SetCursorPosition(0, Console.CursorTop);
-                Console.Write($"\rTime: {TimeSpan.FromSeconds(player.Time):mm\\:ss\\.ff} / {TimeSpan.FromSeconds(player.Duration):mm\\:ss\\.ff} | Speed: {player.PlaybackSpeed:F1}x | Vol: {player.Volume:F1}  ");
+                Console.Write($"\rTime: {FormatTime(TimeSpan.FromSeconds(player.Time))} / {FormatTime(TimeSpan.FromSeconds(player.Duration))} | Speed: {player.PlaybackSpeed:F1}x | Vol: {player.Volume:F1}  ");
                 if (originalLeft < Console.WindowWidth)
                 {
                     Console.SetCursorPosition(originalLeft, originalTop);
                 }
+                
+                string FormatTime(TimeSpan t) =>
+                    t.TotalHours >= 1 ? t.ToString(@"hh\:mm\:ss\.ff") : t.ToString(@"mm\:ss\.ff");
             }
         };
         timer.Start();
@@ -59,7 +62,7 @@ public static class UserInterfaceService
                     player.PlaybackSpeed = Math.Min(player.PlaybackSpeed + 0.1f, 4.0f);
                     break;
                 case ConsoleKey.OemMinus or ConsoleKey.Subtract:
-                    player.PlaybackSpeed = Math.Max(0.1f, player.PlaybackSpeed - 0.1f);
+                    player.PlaybackSpeed = Math.Max(-1f, player.PlaybackSpeed - 0.1f);
                     break;
                 case ConsoleKey.T:
                     currentQuality = (WsolaPerformancePreset)(((int)currentQuality + 1) % 4);

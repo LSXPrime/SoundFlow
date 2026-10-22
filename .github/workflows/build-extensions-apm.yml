@@ -11,14 +11,14 @@ jobs:
       matrix:
         include:
           # Windows builds
-          - os: windows-latest
+          - os: windows-2025
             rid: win-x64
             platform: Windows
             arch: x64
             toolchain: mingw
             cross_file: "windows-x64.crossfile"
 
-          - os: windows-latest
+          - os: windows-2025
             rid: win-x86
             platform: Windows
             arch: x86

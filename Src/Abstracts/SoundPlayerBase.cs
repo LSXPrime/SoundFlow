@@ -31,12 +31,28 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
         get => _playbackSpeed;
         set
         {
-            if (value <= 0)
-                throw new ArgumentOutOfRangeException(nameof(value), "Playback speed must be greater than zero.");
+            if (value == 0)
+                throw new ArgumentOutOfRangeException(nameof(value), "Playback speed must be greater than or less than zero.");
+            
+            // If the sign of the speed changes (e.g., forward to reverse), reset internal buffers
+            // to prevent processing stale data in the wrong direction.
+            if (Math.Sign(_playbackSpeed) != Math.Sign(value) && _playbackSpeed != 0)
+            {
+                _timeStretcher.Reset();
+                _resampleBufferValidSamples = 0;
+                _timeStretcherInputBufferValidSamples = 0;
+                _timeStretcherInputBufferReadOffset = 0;
+                _currentFractionalFrame = 0f;
+            }
+
             if (Math.Abs(_playbackSpeed - value) > 1e-6f)
             {
                 _playbackSpeed = value;
-                _timeStretcher.SetSpeed(_playbackSpeed);
+                // WSOLA does not support negative speeds; we bypass it for reverse playback.
+                if (value > 0)
+                {
+                    _timeStretcher.SetSpeed(_playbackSpeed);
+                }
             }
         }
     }
@@ -77,6 +93,11 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
 
     /// <inheritdoc />
     public bool IsLooping { get; set; }
+    
+    /// <summary>
+    /// Occurs when playback ends.
+    /// </summary>
+    public event EventHandler<EventArgs>? PlaybackEnded;
 
     /// <inheritdoc />
     public float Time =>
@@ -140,39 +161,105 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
         }
         
         // Proactively check for looping before generating audio. This handles loops where a specific end point is set.
-        if (IsLooping && _loopEndSamples != -1)
+        if (IsLooping && _loopEndSamples != -1 && _playbackSpeed > 0)
         {
             // Ensure loop is valid, and we've reached or passed the end point.
             if (_loopStartSamples < _loopEndSamples && _rawSamplePosition >= _loopEndSamples)
                 Seek(_loopStartSamples, channels);
         }
+        
+        // Proactively check for reverse looping
+        if (IsLooping && _playbackSpeed < 0)
+        {
+            var actualLoopEnd = (_loopEndSamples == -1) ? _dataProvider.Length : Math.Min(_loopEndSamples, _dataProvider.Length);
+            if (_loopStartSamples < actualLoopEnd && _rawSamplePosition <= _loopStartSamples)
+                Seek(actualLoopEnd, channels);
+        }
 
-        // Directly read from provider when playback speed is 1.0
-        if (Math.Abs(_playbackSpeed - 1.0f) < 0.001f)
+        // Directly read from provider when playback speed is 1.0 or -1.0
+        if (Math.Abs(Math.Abs(_playbackSpeed) - 1.0f) < 0.001f)
         {
             var outputSlice = output;
             
             // Loop until the output buffer is full or the stream truly ends.
             while (!outputSlice.IsEmpty)
             {
-                var samplesReadThisCall = _dataProvider.ReadBytes(outputSlice);
-                
-                // A return value of 0 is the ONLY reliable end-of-stream signal.
-                if (samplesReadThisCall == 0)
+                if (_playbackSpeed > 0)
                 {
-                    // The data provider is exhausted. Handle the end of stream for the remaining part of the buffer.
-                    HandleEndOfStream(outputSlice, channels);
-                    break; // Exit the read loop
-                }
+                    var samplesReadThisCall = _dataProvider.ReadBytes(outputSlice);
+                    // A return value of 0 is the ONLY reliable end-of-stream signal.
+                    if (samplesReadThisCall == 0)
+                    {
+                        // The data provider is exhausted. Handle the end of stream for the remaining part of the buffer.
+                        HandleEndOfStream(outputSlice, channels);
+                        break; // Exit the read loop
+                    }
 
-                _rawSamplePosition += samplesReadThisCall;
-                outputSlice = outputSlice.Slice(samplesReadThisCall);
+                    _rawSamplePosition += samplesReadThisCall;
+                    outputSlice = outputSlice.Slice(samplesReadThisCall);
+                }
+                else
+                {
+                    // Reverse playback (speed == -1.0)
+                    var samplesToRead = outputSlice.Length;
+                    var targetPos = _rawSamplePosition - samplesToRead;
+                    
+                    if (targetPos < 0)
+                    {
+                        // We are at the beginning, only read what's left
+                        samplesToRead = _rawSamplePosition;
+                        targetPos = 0;
+                    }
+                    
+                    if (samplesToRead == 0)
+                    {
+                        HandleEndOfStream(outputSlice, channels);
+                        break;
+                    }
+
+                    _dataProvider.Seek(targetPos);
+                    var tempBuf = System.Buffers.ArrayPool<float>.Shared.Rent(samplesToRead);
+                    try
+                    {
+                        var tempSpan = tempBuf.AsSpan(0, samplesToRead);
+                        var read = _dataProvider.ReadBytes(tempSpan);
+                        if (read == 0)
+                        {
+                            HandleEndOfStream(outputSlice, channels);
+                            break;
+                        }
+                        
+                        // Reverse frames in place
+                        for (var f = 0; f < read / channels / 2; f++)
+                        {
+                            for (var c = 0; c < channels; c++)
+                            {
+                                (tempSpan[f * channels + c], tempSpan[(read / channels - 1 - f) * channels + c]) = (tempSpan[(read / channels - 1 - f) * channels + c], tempSpan[f * channels + c]);
+                            }
+                        }
+                        
+                        tempSpan.Slice(0, read).CopyTo(outputSlice);
+                        _rawSamplePosition -= read;
+                        
+                        if (read < outputSlice.Length)
+                        {
+                            // We hit the beginning, handle the rest
+                            HandleEndOfStream(outputSlice.Slice(read), channels);
+                            break;
+                        }
+                        outputSlice = outputSlice.Slice(read);
+                    }
+                    finally
+                    {
+                        System.Buffers.ArrayPool<float>.Shared.Return(tempBuf);
+                    }
+                }
             }
             return;
         }
         
         // Ensure time stretcher has correct channel count.
-        if (_timeStretcher.GetTargetSpeed() == 0f && _playbackSpeed != 0f && channels > 0)
+        if (_playbackSpeed > 0 && _timeStretcher.GetTargetSpeed() == 0f && _playbackSpeed != 0f && channels > 0)
             _timeStretcher.SetChannels(channels);
 
         var outputFramesTotal = output.Length / channels;
@@ -195,7 +282,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
                 if (_resampleBufferValidSamples < samplesRequiredInBufferForInterpolation)
                 {
                     _rawSamplePosition += totalSourceSamplesAdvancedThisCall;
-                    _rawSamplePosition = Math.Min(_rawSamplePosition, _dataProvider.Length);
+                    _rawSamplePosition = Math.Max(0, _rawSamplePosition);
                     HandleEndOfStream(output[outputBufferOffset..], channels);
                     return;
                 }
@@ -245,7 +332,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
 
         // Update raw sample position based on actual source samples advanced.
         _rawSamplePosition += totalSourceSamplesAdvancedThisCall;
-        _rawSamplePosition = Math.Min(_rawSamplePosition, _dataProvider.Length);
+        _rawSamplePosition = Math.Max(0, _rawSamplePosition);
     }
 
     /// <summary>
@@ -288,7 +375,57 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
         }
 
         var totalSourceSamplesRepresented = 0;
+        var isReverse = _playbackSpeed < 0;
 
+        // Reverse playback bypasses the time stretcher entirely and relies on linear interpolation.
+        if (isReverse)
+        {
+            while (_resampleBufferValidSamples < minSamplesRequiredInOutputBuffer)
+            {
+                var spaceAvailableInResampleBuffer = _resampleBuffer.Length - _resampleBufferValidSamples;
+                if (spaceAvailableInResampleBuffer == 0) break;
+
+                var samplesToRead = spaceAvailableInResampleBuffer;
+                var targetPos = _rawSamplePosition - samplesToRead;
+                
+                if (targetPos < 0)
+                {
+                    samplesToRead = _rawSamplePosition;
+                    targetPos = 0;
+                }
+                
+                if (samplesToRead == 0) break; // Reached beginning
+
+                _dataProvider.Seek(targetPos);
+                var tempBuf = System.Buffers.ArrayPool<float>.Shared.Rent(samplesToRead);
+                try
+                {
+                    var tempSpan = tempBuf.AsSpan(0, samplesToRead);
+                    var read = _dataProvider.ReadBytes(tempSpan);
+                    if (read == 0) break; // True end of stream
+
+                    // Reverse frames in place
+                    for (var f = 0; f < read / channels / 2; f++)
+                    {
+                        for (var c = 0; c < channels; c++)
+                        {
+                            (tempSpan[f * channels + c], tempSpan[(read / channels - 1 - f) * channels + c]) = (tempSpan[(read / channels - 1 - f) * channels + c], tempSpan[f * channels + c]);
+                        }
+                    }
+
+                    tempSpan[..read].CopyTo(_resampleBuffer.AsSpan(_resampleBufferValidSamples));
+                    _resampleBufferValidSamples += read;
+                    totalSourceSamplesRepresented -= read; // Negative to indicate reverse movement
+                }
+                finally
+                {
+                    System.Buffers.ArrayPool<float>.Shared.Return(tempBuf);
+                }
+            }
+            return totalSourceSamplesRepresented;
+        }
+
+        // Forward playback with time stretching
         // Loop to fill _resampleBuffer until minimum required samples are met.
         while (_resampleBufferValidSamples < minSamplesRequiredInOutputBuffer)
         {
@@ -449,7 +586,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
                 {
                     var sourceSamplesFromFinalFill = FillResampleBuffer(Math.Max(currentlyValidInResample, spaceToFill), channels);
                     _rawSamplePosition += sourceSamplesFromFinalFill;
-                    _rawSamplePosition = Math.Min(_rawSamplePosition, _dataProvider.Length);
+                    _rawSamplePosition = Math.Max(0, _rawSamplePosition);
                 }
 
                 var toCopy = Math.Min(spaceToFill, _resampleBufferValidSamples);
@@ -489,7 +626,8 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
             // Check if the loop is valid (start < end, and start is within bounds).
             if (targetLoopStart < actualLoopEnd && targetLoopStart < _dataProvider.Length)
             {
-                Seek(targetLoopStart, channels);
+                // Forward playback seeks to start. Reverse seeks to end.
+                Seek(_playbackSpeed < 0 ? actualLoopEnd : targetLoopStart, channels);
                 if (!remainingOutputBuffer.IsEmpty)
                     GenerateAudio(remainingOutputBuffer, channels);
             }
@@ -519,11 +657,6 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
         // If not effectively looping, disable the component.
         if (!isEffectivelyLooping) Enabled = false;
     }
-
-    /// <summary>
-    /// Occurs when playback ends.
-    /// </summary>
-    public event EventHandler<EventArgs>? PlaybackEnded;
 
     #region Audio Playback Control
 
