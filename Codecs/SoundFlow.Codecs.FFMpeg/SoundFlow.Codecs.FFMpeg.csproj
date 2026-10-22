@@ -9,7 +9,7 @@
         <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
         <Title>SoundFlow FFmpeg Codecs</Title>
         <PackageId>SoundFlow.Codecs.FFMpeg</PackageId>
-        <Version>1.4.0</Version>
+        <Version>1.4.2</Version>
         <Description>Provides FFmpeg-based audio codecs (MP3, AAC, OGG, Opus, etc.) for the SoundFlow audio engine.</Description>
         <PackageTags>soundflow;audio;codec;ffmpeg;mp3;aac;ogg;opus</PackageTags>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
