@@ -123,51 +123,30 @@ public sealed class StreamDataProvider : ISoundDataProvider
     ///     Gets the total length of the audio data in samples.
     /// </summary>
     /// <remarks>
-    ///     Two independent length estimates are available at this layer:
-    ///     <list type="bullet">
-    ///         <item><c>_decoder.Length</c> — returned by the underlying codec (e.g. <c>ma_decoder_get_length_in_pcm_frames</c>).</item>
-    ///         <item><c>FormatInfo.Duration</c> — read by <see cref="SoundMetadataReader"/> from ID3/Xing/Info tags.</item>
-    ///     </list>
-    ///     Both can be wrong for VBR MP3s without a Xing/Info header, but they fail independently: the metadata
-    ///     reader and the codec use different parsing paths. When they disagree, we pick the <b>larger</b> value.
-    ///     A too-small length is far worse than a too-large one — it makes the displayed <c>Duration</c> lie,
-    ///     breaks seeking near the end, can trigger premature end-of-stream handling, and produces impossible
-    ///     states like <c>Time &gt; Duration</c>
+    ///     Prefers the decoder's reported length when available. Metadata duration is a fallback
+    ///     estimate and can overstate the audio length, for example for VBR MP3s without a Xing header.
+    ///     The fallback uses the decoder's output sample rate and channel count so its sample units
+    ///     agree with decoded data, including when the source is resampled or remixed.
     /// </remarks>
     public int Length
     {
         get
         {
             var decoderLength = _decoder.Length;
-            
-            int metadataLength;
-            if (FormatInfo != null
-                && FormatInfo.Duration > TimeSpan.Zero
-                && FormatInfo.SampleRate > 0
-                && FormatInfo.ChannelCount > 0)
-            {
-                var metadataLengthSamples = FormatInfo.Duration.TotalSeconds
-                                            * FormatInfo.SampleRate
-                                            * FormatInfo.ChannelCount;
+            if (decoderLength > 0)
+                return decoderLength;
 
-                if (metadataLengthSamples is >= 0 and <= int.MaxValue)
-                    metadataLength = (int)metadataLengthSamples;
-                else
-                    metadataLength = 0;
-            }
-            else
-            {
-                metadataLength = 0;
-            }
+            if (FormatInfo == null || FormatInfo.Duration <= TimeSpan.Zero
+                || _decoder.SampleRate <= 0 || _decoder.Channels <= 0)
+                return 0;
 
-            return decoderLength switch
-            {
-                // Prefer the larger value when both are available. See the XML doc above for the rationale.
-                // Special case: if one of them is 0 (unknown), use the other.
-                > 0 when metadataLength > 0 => Math.Max(decoderLength, metadataLength),
-                > 0 => decoderLength,
-                _ => metadataLength
-            };
+            var metadataLengthSamples = FormatInfo.Duration.TotalSeconds
+                                        * _decoder.SampleRate
+                                        * _decoder.Channels;
+
+            return metadataLengthSamples is >= 0 and <= int.MaxValue
+                ? (int)metadataLengthSamples
+                : 0;
         }
     }
 
